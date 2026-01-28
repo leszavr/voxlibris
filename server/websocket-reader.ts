@@ -1,4 +1,3 @@
-import { Server as HttpServer } from "node:http";
 import { Server, Socket } from "socket.io";
 import jwt, { JwtPayload } from "jsonwebtoken";
 import { db } from "./db.js";
@@ -59,19 +58,20 @@ async function authenticateSocket(socket: Socket, next: (err?: Error) => void) {
   }
 }
 
-export function initializeReaderWebSocket(httpServer: HttpServer) {
-  const io = new Server(httpServer, {
-    cors: {
-      origin: process.env.CLIENT_URL || "http://localhost:5173",
-      credentials: true,
-    },
-    path: "/ws/reader",
-  });
+export function initializeReaderWebSocket(io: Server) {
+  console.log("[WS Reader] Initializing reader WebSocket namespace...");
+  console.log("[WS Reader] Environment:", process.env.NODE_ENV);
+  console.log("[WS Reader] Namespace: /reader");
+  
+  // Создаем namespace для reader
+  const readerNamespace = io.of("/reader");
+
+  console.log("[WS Reader] WebSocket namespace created: /reader");
 
   // Применяем middleware аутентификации
-  io.use(authenticateSocket);
+  readerNamespace.use(authenticateSocket);
 
-  io.on("connection", (socket: Socket) => {
+  readerNamespace.on("connection", (socket: Socket) => {
     const authSocket = socket as AuthenticatedSocket;
     console.log(`[WS Reader] User ${authSocket.username} (${authSocket.userId}) connected`);
 

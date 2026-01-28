@@ -51,8 +51,7 @@ export class ReaderWebSocketClient {
     this.isConnecting = true;
 
     return new Promise((resolve, reject) => {
-      this.socket = io(this.config.url!, {
-        path: "/ws/reader",
+      this.socket = io(`${this.config.url!}/reader`, {
         auth: {
           token: this.config.token,
         },

@@ -1,4 +1,3 @@
-import { Server as HttpServer } from "node:http";
 import { Server, Socket } from "socket.io";
 import jwt, { type JwtPayload } from "jsonwebtoken";
 import { inArray } from "drizzle-orm";
@@ -90,6 +89,15 @@ async function authenticateSocket(socket: Socket, next: (err?: Error) => void) {
     next();
   } catch (error) {
     console.error("[WS Chat] Authentication error:", error);
+    console.error("[WS Chat] Error details:", {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      handshake: {
+        headers: socket.handshake.headers,
+        auth: socket.handshake.auth,
+        url: socket.handshake.url
+      }
+    });
     
     if (error instanceof jwt.TokenExpiredError) {
       return next(new Error("Token expired - please re-authenticate"));
@@ -155,21 +163,20 @@ function getParticipants(room: string): Array<{ userId: string; username: string
   return map ? Array.from(map.values()) : [];
 }
 
-export function initializeChatWebSocket(httpServer: HttpServer) {
-  const io = new Server(httpServer, {
-    cors: {
-      origin: process.env.NODE_ENV === "development" 
-        ? "http://localhost:5173" 
-        : false, // В продакшн разрешаем все источники, так как прокси управляет CORS
-      credentials: true,
-    },
-    path: "/ws/chat",
-    transports: ["websocket", "polling"], // Явно указываем транспорты
-  });
+export function initializeChatWebSocket(io: Server) {
+  console.log("[WS Chat] Initializing chat WebSocket namespace...");
+  console.log("[WS Chat] Environment:", process.env.NODE_ENV);
+  console.log("[WS Chat] Namespace: /chat");
+  
+  // Создаем namespace для чата
+  const chatNamespace = io.of("/chat");
 
-  io.use(authenticateSocket);
+  console.log("[WS Chat] WebSocket namespace created: /chat");
 
-  io.on("connection", (socket: Socket) => {
+  chatNamespace.use(authenticateSocket);
+
+  chatNamespace.on("connection", (socket: Socket) => {
+    console.log(`[WS Chat] New connection attempt from ${socket.handshake.address}`);
     const authSocket = socket as AuthenticatedSocket;
     console.log(`[WS Chat] User ${authSocket.username} (${authSocket.userId}) connected`);
 
@@ -193,7 +200,7 @@ export function initializeChatWebSocket(httpServer: HttpServer) {
 
         console.log(`[WS Chat] ${authSocket.username} joined room ${room}`);
 
-        io.to(room).emit("participants", {
+chatNamespace.to(room).emit("participants", {
           room,
           clubId,
           channel: channel || DEFAULT_CHANNEL,
@@ -274,7 +281,7 @@ export function initializeChatWebSocket(httpServer: HttpServer) {
           } as any,
         };
 
-        io.to(room).emit("chat_message", {
+        chatNamespace.to(room).emit("chat_message", {
           room,
           clubId,
           channel: channel || DEFAULT_CHANNEL,
@@ -446,7 +453,7 @@ export function initializeChatWebSocket(httpServer: HttpServer) {
             })
             .where(eq(chatMessages.id, messageId));
 
-          io.to(room).emit("message_deleted", {
+          chatNamespace.to(room).emit("message_deleted", {
             room,
             clubId,
             channel: channel || DEFAULT_CHANNEL,
@@ -466,7 +473,7 @@ export function initializeChatWebSocket(httpServer: HttpServer) {
       socket.leave(room);
       removeParticipant(room, authSocket.userId);
 
-      io.to(room).emit("participants", {
+      chatNamespace.to(room).emit("participants", {
         room,
         clubId,
         channel: channel || DEFAULT_CHANNEL,
@@ -482,7 +489,7 @@ export function initializeChatWebSocket(httpServer: HttpServer) {
       for (const [room, participants] of roomParticipants.entries()) {
         if (participants.has(authSocket.userId)) {
           participants.delete(authSocket.userId);
-          io.to(room).emit("participants", {
+        chatNamespace.to(room).emit("participants", {
             room,
             participants: Array.from(participants.values()),
           });

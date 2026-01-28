@@ -207,12 +207,13 @@ setInterval(
 
 // Setup WebSocket handlers for live reading
 const socketIO = setupWebSocketHandlers(io);
+console.log("[WS] Main WebSocket handlers initialized");
 
 // Initialize Reader WebSocket (JWT-based authentication)
-const readerIO = initializeReaderWebSocket(httpServer);
+const readerIO = initializeReaderWebSocket(io);
 
-// Initialize Club Chat WebSocket
-const chatIO = initializeChatWebSocket(httpServer);
+// Initialize Club Chat WebSocket (namespace)
+const chatIO = initializeChatWebSocket(io);
 
 app.use((req, res, next) => {
 	const start = Date.now();
@@ -426,6 +427,7 @@ try {
 		},
 		() => {
 			log(`serving on port ${port}`);
+			log(`WebSocket namespaces: /socket.io (main), /chat (club chat), /reader (reading)`);
 		},
 	);
 } catch (error) {

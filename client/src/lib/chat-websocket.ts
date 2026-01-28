@@ -29,13 +29,24 @@ export class ChatWebSocketClient {
     
     // Для продакшн используем текущий хост с правильным протоколом, для разработки порт 5000
     const isProd = import.meta.env.PROD;
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
     const fallbackUrl = isProd 
       ? `${protocol}//${window.location.hostname}` 
       : `${protocol}//${window.location.hostname}:5000`;
 
+    const finalUrl = explicitUrl || envUrl || fallbackUrl;
+    
+    console.log('[ChatWebSocket] Initializing with config:', {
+      isProd,
+      explicitUrl,
+      envUrl,
+      fallbackUrl,
+      finalUrl,
+      path: '/ws/chat'
+    });
+
     this.config = {
-      url: explicitUrl || envUrl || fallbackUrl,
+      url: finalUrl,
       reconnectionAttempts: config.reconnectionAttempts ?? 5,
       reconnectionDelay: config.reconnectionDelay ?? 2000,
       ...config,
@@ -61,8 +72,11 @@ export class ChatWebSocketClient {
     this.isConnecting = true;
 
     return new Promise((resolve, reject) => {
-      this.socket = io(this.config.url!, {
-        path: "/ws/chat",
+console.log('[ChatWebSocket] Connecting to:', `${this.config.url!}/chat`);
+    console.log('[ChatWebSocket] Using namespace: /chat');
+    console.log('[ChatWebSocket] Token present:', !!this.config.token);
+      
+      this.socket = io(`${this.config.url!}/chat`, {
         auth: {
           token: this.config.token,
         },
@@ -73,22 +87,31 @@ export class ChatWebSocketClient {
       });
 
       this.socket.on("connect", () => {
+        console.log('[ChatWebSocket] Connected successfully');
         this.isConnecting = false;
         this.config.onConnect?.();
         resolve();
       });
 
-      this.socket.on("disconnect", () => {
+      this.socket.on("disconnect", (reason) => {
+        console.log('[ChatWebSocket] Disconnected:', reason);
         this.config.onDisconnect?.();
       });
 
       this.socket.on("connect_error", (error) => {
+        console.error('[ChatWebSocket] Connection error:', error);
+        console.error('[ChatWebSocket] Error details:', {
+          message: error.message,
+          data: (error as any).data,
+          type: (error as any).type
+        });
         this.isConnecting = false;
         this.config.onError?.(error);
         reject(error);
       });
 
       this.socket.on("error", (error: any) => {
+        console.error('[ChatWebSocket] Socket error:', error);
         this.config.onError?.(new Error(error?.message || "Chat WebSocket error"));
       });
 
