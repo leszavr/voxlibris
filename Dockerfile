@@ -54,7 +54,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD node -e "require('http').get('http://localhost:5000/api/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
 
 # Set environment variables for Node.js optimization
-ENV NODE_OPTIONS="--max-old-space-size=1024 --optimize-for-size"
+ENV NODE_OPTIONS="--max-old-space-size=1024"
 ENV UV_THREADPOOL_SIZE=8
 
 # Start the application with monitoring
