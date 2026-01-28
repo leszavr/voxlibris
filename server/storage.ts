@@ -1,5 +1,5 @@
 import { config } from "dotenv";
-import { cpus } from "os";
+import { cpus } from "node:os";
 
 config();
 
@@ -3208,6 +3208,16 @@ export class PostgreSQLStorage implements IStorage {
 }
 
 // Use PostgreSQL in production, MemStorage for fallback/testing
-export const storage = process.env.NODE_ENV === 'test'
+// Ensure we always use PostgreSQL unless explicitly in test mode
+const isTestMode = process.env.NODE_ENV === 'test';
+const hasPostgresUrl = !!process.env.DATABASE_URL;
+
+if (!isTestMode && !hasPostgresUrl) {
+  console.error('ERROR: DATABASE_URL not found in production environment!');
+  console.error('Reading history functionality requires PostgreSQL database.');
+  console.error('Please configure DATABASE_URL environment variable.');
+}
+
+export const storage = isTestMode
   ? new MemStorage()
   : new PostgreSQLStorage();
