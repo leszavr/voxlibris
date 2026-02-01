@@ -200,10 +200,12 @@ export function useReadingSession() {
     console.log('[Session] Creating session with params:', params);
     
     try {
+      const token = localStorage.getItem('token');
       const response = await fetch('/api/sessions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
         },
         credentials: 'include',
         body: JSON.stringify(params),
@@ -319,7 +321,11 @@ export function useReadingSession() {
     if (!session.sessionId) return;
     
     try {
+      const token = localStorage.getItem('token');
       const response = await fetch(`/api/sessions/${session.sessionId}/listeners`, {
+        headers: {
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
         credentials: 'include'
       });
       
