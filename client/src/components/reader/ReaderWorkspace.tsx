@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams } from "wouter";
 import { useBookContent, useReadingProgress, useUpdateProgress } from "../../hooks/use-reader";
 import { useAnalytics } from "../../hooks/use-analytics";
 import { ContentRenderer } from "./ContentRenderer";
 import { ReaderControls } from "./ReaderControls";
+import { CompactSyncIndicator } from "./SyncIndicator";
 import { Button } from "../ui/button";
 import { Maximize2, Minimize2, List, Settings, ArrowLeft } from "lucide-react";
 
@@ -29,20 +30,40 @@ interface ReaderWorkspaceProps {
   };
 }
 
-function initializeReaderChapter(
-  bookId: string | undefined,
-  progress: { currentChapter: number } | null | undefined,
-  currentChapter: number | null,
-  setCurrentChapter: (chapter: number) => void,
-  progressLoading: boolean
-) {
-  if (!progressLoading && progress && currentChapter === null) {
-    setCurrentChapter(progress.currentChapter || 1);
-  } else if (!progressLoading && !progress && currentChapter === null) {
-    setCurrentChapter(1);
+function applyReaderSettings() {
+  const saved = localStorage.getItem("readerSettings");
+  if (!saved) return;
+
+  try {
+    const settings = JSON.parse(saved);
+    const root = document.documentElement;
+    root.style.setProperty("--reader-font-size", `${settings.fontSize}px`);
+    root.style.setProperty("--reader-font-family", settings.fontFamily);
+    root.style.setProperty("--reader-line-height", settings.lineHeight.toString());
+    root.style.setProperty("--reader-text-align", settings.textAlign);
+    root.style.setProperty("--reader-content-width", `${settings.contentWidth}%`);
+    (root.dataset as any).readerTheme = settings.theme;
+    document.body.classList.remove("reader-light", "reader-dark", "reader-sepia");
+    document.body.classList.add(`reader-${settings.theme}`);
+  } catch (e) {
+    if (import.meta.env.DEV) {
+      console.error('Ошибка применения настроек:', e);
+    }
   }
 }
 
+function initializeReaderChapter(
+  progress: { currentChapter: number } | null | undefined,
+  currentChapter: number | null,
+  setCurrentChapter: (chapter: number) => void
+) {
+  if (currentChapter !== null) return;
+  
+  const initialChapter = progress?.currentChapter || 1;
+  setCurrentChapter(initialChapter);
+}
+
+// eslint-disable-next-line sonarjs/cognitive-complexity
 export function ReaderWorkspace({ bookId: propBookId, clubId, params }: Readonly<ReaderWorkspaceProps>) {
   const routeParams = useParams();
   const bookId = propBookId || params?.bookId || routeParams.bookId;
@@ -52,6 +73,9 @@ export function ReaderWorkspace({ bookId: propBookId, clubId, params }: Readonly
   const [tocOpen, setTocOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [progressRestored, setProgressRestored] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [lastSyncTime, setLastSyncTime] = useState<number | null>(null);
   
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -73,8 +97,10 @@ export function ReaderWorkspace({ bookId: propBookId, clubId, params }: Readonly
   
   // Инициализация currentChapter из прогресса при первой загрузке
   useEffect(() => {
-    initializeReaderChapter(bookId, progress, currentChapter, setCurrentChapter, progressLoading);
-  }, [progress, progressLoading, currentChapter, bookId]);
+    if (!progressLoading) {
+      initializeReaderChapter(progress, currentChapter, setCurrentChapter);
+    }
+  }, [progress, progressLoading, currentChapter]);
 
   // Адаптация данных в зависимости от источника (personalBooks или books)
   const bookData = content && 'book' in content 
@@ -98,89 +124,76 @@ export function ReaderWorkspace({ bookId: propBookId, clubId, params }: Readonly
 
   // Применение сохранённых настроек ридера при загрузке
   useEffect(() => {
-    const saved = localStorage.getItem("readerSettings");
-    if (saved) {
-      try {
-        const settings = JSON.parse(saved);
-        const root = document.documentElement;
-        root.style.setProperty("--reader-font-size", `${settings.fontSize}px`);
-        root.style.setProperty("--reader-font-family", settings.fontFamily);
-        root.style.setProperty("--reader-line-height", settings.lineHeight.toString());
-        root.style.setProperty("--reader-text-align", settings.textAlign);
-        root.style.setProperty("--reader-content-width", `${settings.contentWidth}%`);
-        (root.dataset as any).readerTheme = settings.theme;
-        document.body.classList.remove("reader-light", "reader-dark", "reader-sepia");
-        document.body.classList.add(`reader-${settings.theme}`);
-      } catch (e) {
-        if (import.meta.env.DEV) {
-          console.error('Ошибка применения настроек:', e);
-        }
-      }
-    }
+    applyReaderSettings();
   }, []);
 
   // Трекинг открытия книги и начала чтения главы
   useEffect(() => {
-    if (bookId && currentChapter !== null && !contentLoading) {
-      // Отслеживаем открытие книги только один раз
-      if (currentChapter === 1 || currentChapter === progress?.currentChapter) {
-        analytics.trackBookOpen(bookId);
-      }
-      
-      // Отслеживаем начало чтения главы
-      analytics.trackChapterStart(bookId, currentChapter);
-      
-      // Запускаем отслеживание сессии чтения
-      analytics.startReadingSession(bookId, currentChapter);
-      
-      return () => {
-        // Останавливаем отслеживание при размонтировании или смене главы
-        analytics.stopReadingSession();
-      };
+    if (!bookId || currentChapter === null || contentLoading) return;
+
+    // Отслеживаем открытие книги только один раз
+    const isFirstChapter = currentChapter === 1 || currentChapter === progress?.currentChapter;
+    if (isFirstChapter) {
+      analytics.trackBookOpen(bookId);
     }
+    
+    // Отслеживаем начало чтения главы
+    analytics.trackChapterStart(bookId, currentChapter);
+    
+    // Запускаем отслеживание сессии чтения
+    analytics.startReadingSession(bookId, currentChapter);
+    
+    return () => {
+      analytics.stopReadingSession();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookId, currentChapter, contentLoading]);
 
   // Восстановление позиции из прогресса (только один раз при загрузке)
   useEffect(() => {
-    // Восстанавливаем позицию только если:
-    // 1. Прогресс загружен
-    // 2. Текущая глава совпадает с главой из прогресса
-    // 3. Контент загружен
-    // 4. Ещё не восстанавливали позицию
-    if (
-      progress && 
+    const shouldRestore = progress && 
       !contentLoading && 
       !progressRestored && 
       currentChapter === progress.currentChapter &&
-      currentChapter !== null
-    ) {
-      if (import.meta.env.DEV) {
-        console.log('[Reader] Restoring scroll position from progress:', progress);
-      }
-      
-      // Восстановление позиции скролла после загрузки контента
-      if (progress.currentPosition && scrollContainerRef.current) {
-        try {
-          const position = JSON.parse(progress.currentPosition);
-          // Даём время на рендеринг контента
-          setTimeout(() => {
-            if (scrollContainerRef.current) {
-              scrollContainerRef.current.scrollTop = position.scrollTop || 0;
-              if (import.meta.env.DEV) {
-                console.log('[Reader] Restored scroll position:', position.scrollTop);
-              }
+      currentChapter !== null;
+
+    if (!shouldRestore) return;
+
+    if (import.meta.env.DEV) {
+      console.log('[Reader] Restoring scroll position from progress:', progress);
+    }
+    
+    if (progress.currentPosition && scrollContainerRef.current) {
+      try {
+        const position = JSON.parse(progress.currentPosition);
+        setTimeout(() => {
+          if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = position.scrollTop || 0;
+            if (import.meta.env.DEV) {
+              console.log('[Reader] Restored scroll position:', position.scrollTop);
             }
-          }, 300);
-        } catch (e) {
-          if (import.meta.env.DEV) {
-            console.error('Ошибка восстановления позиции скролла:', e);
           }
+        }, 300);
+      } catch (e) {
+        if (import.meta.env.DEV) {
+          console.error('Ошибка восстановления позиции скролла:', e);
         }
       }
-      setProgressRestored(true);
     }
+    setProgressRestored(true);
   }, [progress, contentLoading, progressRestored, currentChapter]);
+
+  // Колбэки для сохранения прогресса (вынесены для уменьшения вложенности)
+  const handleProgressSuccess = useCallback(() => {
+    setIsSyncing(false);
+    setLastSyncTime(Date.now());
+  }, []);
+
+  const handleProgressError = useCallback((error: Error) => {
+    setIsSyncing(false);
+    setSyncError(error instanceof Error ? error.message : "Ошибка сохранения прогресса");
+    setTimeout(() => setSyncError(null), 3000);
+  }, []);
 
   // Отслеживание скролла и сохранение прогресса
   useEffect(() => {
@@ -214,6 +227,10 @@ export function ReaderWorkspace({ bookId: propBookId, clubId, params }: Readonly
           console.log('[Reader] Saving progress:', { currentChapter, totalProgress, position });
         }
         
+        // Устанавливаем состояние синхронизации
+        setIsSyncing(true);
+        setSyncError(null);
+        
         // Сохраняем последний прогресс в ref
         lastSavedProgressRef.current = {
           chapter: currentChapter,
@@ -226,6 +243,9 @@ export function ReaderWorkspace({ bookId: propBookId, clubId, params }: Readonly
           currentPosition: position,
           progress: totalProgress,
           clubId,
+        }, {
+          onSuccess: handleProgressSuccess,
+          onError: handleProgressError
         });
       }, 1500);
     };
@@ -238,55 +258,56 @@ export function ReaderWorkspace({ bookId: propBookId, clubId, params }: Readonly
         clearTimeout(scrollTimeoutRef.current);
       }
     };
-  }, [currentChapter, bookData, updateProgress, clubId]);
+  }, [currentChapter, bookData, updateProgress, clubId, handleProgressSuccess, handleProgressError]);
+
+  // Сохранение прогресса при выходе из компонента
+  const saveProgressOnUnmount = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container || !bookData || bookData.totalChapters === 0 || !currentChapter) return;
+
+    const scrollTop = container.scrollTop;
+    const scrollHeight = container.scrollHeight;
+    const clientHeight = container.clientHeight;
+    
+    const scrollProgress = Math.min(
+      100,
+      Math.round((scrollTop / Math.max(1, scrollHeight - clientHeight)) * 100)
+    );
+    
+    const totalProgress = Math.round(
+      ((currentChapter - 1) / bookData.totalChapters + scrollProgress / 100 / bookData.totalChapters) * 100
+    );
+    
+    const position = JSON.stringify({ scrollTop, scrollHeight, clientHeight });
+    
+    if (import.meta.env.DEV) {
+      console.log('[Reader] Saving progress on unmount:', { currentChapter, totalProgress });
+    }
+    
+    const token = localStorage.getItem('authToken');
+    if (token && bookId) {
+      fetch('/api/progress', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          bookId,
+          currentChapter,
+          currentPosition: position,
+          progress: totalProgress,
+          clubId,
+        }),
+        keepalive: true,
+      });
+    }
+  }, [bookId, currentChapter, bookData, clubId]);
 
   // Сохранение прогресса при выходе из компонента (размонтировании)
   useEffect(() => {
-    return () => {
-      // Если есть несохранённый прогресс, сохраняем его немедленно
-      const container = scrollContainerRef.current;
-      if (container && bookData && bookData.totalChapters > 0 && currentChapter !== null) {
-        const scrollTop = container.scrollTop;
-        const scrollHeight = container.scrollHeight;
-        const clientHeight = container.clientHeight;
-        
-        const scrollProgress = Math.min(
-          100,
-          Math.round((scrollTop / Math.max(1, scrollHeight - clientHeight)) * 100)
-        );
-        
-        const totalProgress = Math.round(
-          ((currentChapter - 1) / bookData.totalChapters + scrollProgress / 100 / bookData.totalChapters) * 100
-        );
-        
-        const position = JSON.stringify({ scrollTop, scrollHeight, clientHeight });
-        
-        if (import.meta.env.DEV) {
-          console.log('[Reader] Saving progress on unmount:', { currentChapter, totalProgress });
-        }
-        
-        // Сохраняем синхронно через fetch, так как компонент размонтируется
-        const token = localStorage.getItem('authToken');
-        if (token && bookId) {
-          fetch('/api/progress', {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              bookId,
-              currentChapter,
-              currentPosition: position,
-              progress: totalProgress,
-              clubId,
-            }),
-            keepalive: true, // Позволяет завершить запрос даже после закрытия страницы
-          });
-        }
-      }
-    };
-  }, [bookId, currentChapter, bookData, clubId]);
+    return saveProgressOnUnmount;
+  }, [saveProgressOnUnmount]);
 
   // Fullscreen API
   const toggleFullscreen = () => {
@@ -300,6 +321,32 @@ export function ReaderWorkspace({ bookId: propBookId, clubId, params }: Readonly
     }
   };
 
+  // Рендер навигации по главам
+  const renderChapterNavigation = () => {
+    const chapter = currentChapter ?? 1;
+    return (
+      <div className="flex justify-between items-center mt-12 pt-8 border-t">
+        <Button
+          variant="outline"
+          onClick={() => setCurrentChapter(Math.max(1, chapter - 1))}
+          disabled={chapter <= 1}
+        >
+          ← Предыдущая глава
+        </Button>
+        <span className="text-sm text-muted-foreground">
+          Глава {chapter} из {bookData.totalChapters}
+        </span>
+        <Button
+          variant="outline"
+          onClick={() => setCurrentChapter(Math.min(bookData.totalChapters, chapter + 1))}
+          disabled={chapter >= bookData.totalChapters}
+        >
+          Следующая глава →
+        </Button>
+      </div>
+    );
+  };
+
   // Рендер контента без вложенных тернариев
   const renderMainContent = () => {
     if (contentLoading) {
@@ -310,29 +357,10 @@ export function ReaderWorkspace({ bookId: propBookId, clubId, params }: Readonly
       );
     }
     if (currentChapterContent) {
-      const chapter = currentChapter ?? 1;
       return (
         <>
           <ContentRenderer content={currentChapterContent} />
-          <div className="flex justify-between items-center mt-12 pt-8 border-t">
-            <Button
-              variant="outline"
-              onClick={() => setCurrentChapter(Math.max(1, chapter - 1))}
-              disabled={chapter <= 1}
-            >
-              ← Предыдущая глава
-            </Button>
-            <span className="text-sm text-muted-foreground">
-              Глава {chapter} из {bookData.totalChapters}
-            </span>
-            <Button
-              variant="outline"
-              onClick={() => setCurrentChapter(Math.min(bookData.totalChapters, chapter + 1))}
-              disabled={chapter >= bookData.totalChapters}
-            >
-              Следующая глава →
-            </Button>
-          </div>
+          {renderChapterNavigation()}
         </>
       );
     }
@@ -351,7 +379,6 @@ export function ReaderWorkspace({ bookId: propBookId, clubId, params }: Readonly
     );
   }
 
-  // Показываем загрузку пока определяется глава
   if (currentChapter === null || progressLoading) {
     return (
       <div className="flex items-center justify-center h-screen bg-background text-foreground">
@@ -486,6 +513,13 @@ export function ReaderWorkspace({ bookId: propBookId, clubId, params }: Readonly
           {renderMainContent()}
         </div>
       </main>
+
+      {/* Компактный индикатор синхронизации */}
+      <CompactSyncIndicator
+        isSyncing={isSyncing}
+        lastSyncTime={lastSyncTime || undefined}
+        error={syncError || undefined}
+      />
     </div>
   );
 }
