@@ -131,11 +131,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
       authAPI.clearTokens();
       setUser(null);
     };
-    window.addEventListener('auth-error', handleAuthError);
+    globalThis.addEventListener('auth-error', handleAuthError);
 
     return () => {
       clearInterval(interval);
-      window.removeEventListener('auth-error', handleAuthError);
+      globalThis.removeEventListener('auth-error', handleAuthError);
     };
   }, []);
 

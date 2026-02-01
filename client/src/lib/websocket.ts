@@ -18,13 +18,13 @@ export type ReaderEventHandler = (data: any) => void;
 
 export class ReaderWebSocketClient {
   private socket: Socket | null = null;
-  private config: ReaderWebSocketConfig;
-  private eventHandlers: Map<string, Set<ReaderEventHandler>> = new Map();
+  private readonly config: ReaderWebSocketConfig;
+  private readonly eventHandlers: Map<string, Set<ReaderEventHandler>> = new Map();
   private isConnecting = false;
 
   constructor(config: ReaderWebSocketConfig) {
     this.config = {
-      url: config.url || `${window.location.protocol}//${window.location.host}`,
+      url: config.url || `${globalThis.location.protocol}//${globalThis.location.host}`,
       reconnectionAttempts: config.reconnectionAttempts || 5,
       reconnectionDelay: config.reconnectionDelay || 2000,
       ...config,

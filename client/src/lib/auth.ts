@@ -35,7 +35,7 @@ interface RefreshResponse {
 class AuthAPI {
   private readonly baseURL = '/api';
   private refreshTimer: NodeJS.Timeout | null = null;
-  private activityTimer: NodeJS.Timeout | null = null;
+  private readonly activityTimer: NodeJS.Timeout | null = null;
   private lastActivity: number = Date.now();
   private isRefreshing: boolean = false;
   private isAuthenticated: boolean = false;
@@ -120,7 +120,7 @@ class AuthAPI {
         return false;
       }
 
-      const data: RefreshResponse = await response.json();
+      await response.json(); // Просто проверяем валидность ответа
       this.isAuthenticated = true;
       
       // Перезапускаем таймер автоматического обновления
@@ -202,7 +202,7 @@ class AuthAPI {
     this.clearTokenRefreshTimer();
     this.isAuthenticated = false;
     // Генерируем событие для обновления UI
-    window.dispatchEvent(new Event('auth-error'));
+    globalThis.dispatchEvent(new Event('auth-error'));
   }
 
   /**
@@ -224,18 +224,17 @@ class AuthAPI {
         throw error;
       }
 
-      const data: AuthResponse = await response.json();
       this.isAuthenticated = true;
       this.startTokenRefreshTimer();
       
-      return data;
+      return await response.json();
     } catch (error) {
       this.isAuthenticated = false;
       if (error instanceof AuthError) {
         throw error;
       }
       
-      const authError = AuthErrorFactory.networkError();
+      const authError = AuthErrorFactory.fromNetworkError(error as Error);
       AuthErrorHandler.logError(authError, 'login');
       throw authError;
     }
@@ -271,7 +270,7 @@ class AuthAPI {
         throw error;
       }
       
-      const authError = AuthErrorFactory.networkError();
+      const authError = AuthErrorFactory.fromNetworkError(error as Error);
       AuthErrorHandler.logError(authError, 'register');
       throw authError;
     }

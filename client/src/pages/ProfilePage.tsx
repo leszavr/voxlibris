@@ -348,11 +348,13 @@ export default function ProfilePage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {clubsLoading ? (
+                {clubsLoading && (
                   <div className="flex items-center justify-center py-12">
                     <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                   </div>
-                ) : clubs.length === 0 ? (
+                )}
+                
+                {!clubsLoading && clubs.length === 0 && (
                   <div className="text-center py-12">
                     <Users className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
                     <p className="text-muted-foreground">
@@ -370,7 +372,9 @@ export default function ProfilePage() {
                       </Button>
                     )}
                   </div>
-                ) : (
+                )}
+                
+                {!clubsLoading && clubs.length > 0 && (
                   <div className="grid gap-4 md:grid-cols-2">
                     {clubs.map((club) => (
                       <Card

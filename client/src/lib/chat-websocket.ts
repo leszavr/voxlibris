@@ -1,5 +1,4 @@
 import { io, type Socket } from "socket.io-client";
-import type { ChatMessageWithUser } from "@shared/schema";
 
 export interface ChatWebSocketConfig {
   url?: string;
@@ -14,8 +13,8 @@ export type ChatEventHandler = (data: any) => void;
 
 export class ChatWebSocketClient {
   private socket: Socket | null = null;
-  private config: ChatWebSocketConfig;
-  private eventHandlers: Map<string, Set<ChatEventHandler>> = new Map();
+  private readonly config: ChatWebSocketConfig;
+  private readonly eventHandlers: Map<string, Set<ChatEventHandler>> = new Map();
   private isConnecting = false;
 
   constructor(config: ChatWebSocketConfig) {
@@ -28,10 +27,10 @@ export class ChatWebSocketClient {
     
     // Для продакшн используем текущий хост с правильным протоколом, для разработки порт 5000
     const isProd = import.meta.env.PROD;
-    const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+    const protocol = globalThis.location.protocol === 'https:' ? 'https:' : 'http:';
     const fallbackUrl = isProd 
-      ? `${protocol}//${window.location.hostname}` 
-      : `${protocol}//${window.location.hostname}:5000`;
+      ? `${protocol}//${globalThis.location.hostname}` 
+      : `${protocol}//${globalThis.location.hostname}:5000`;
 
     const finalUrl = explicitUrl || envUrl || fallbackUrl;
     

@@ -76,6 +76,34 @@ async function joinClubByInvite(inviteToken: string | undefined, invitedToClub: 
   }
 }
 
+// Установка auth cookies
+function setAuthCookies(
+  res: Response, 
+  accessToken: string, 
+  refreshToken: string, 
+  rememberMe: boolean
+): void {
+  const maxAge = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
+  const accessMaxAge = rememberMe ? 2 * 60 * 60 * 1000 : 15 * 60 * 1000;
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  res.cookie('refreshToken', refreshToken, {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? 'strict' : 'lax',
+    maxAge,
+    path: '/',
+  });
+  
+  res.cookie('accessToken', accessToken, {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? 'strict' : 'lax',
+    maxAge: accessMaxAge,
+    path: '/',
+  });
+}
+
 export function setupAuthRoutes(app: Express): void {
   // Setup cookie parser
   app.use(cookieParser());
@@ -124,25 +152,8 @@ export function setupAuthRoutes(app: Express): void {
       // Присоединение к клубу по приглашению
       await joinClubByInvite(inviteToken, invitedToClub, authResult.user?.id);
 
-      // Set both tokens as httpOnly cookies with appropriate maxAge
-      const maxAge = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
-      const accessMaxAge = rememberMe ? 2 * 60 * 60 * 1000 : 15 * 60 * 1000; // 2h or 15m
-      
-      res.cookie('refreshToken', authResult.tokens.refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
-        maxAge,
-        path: '/',
-      });
-      
-      res.cookie('accessToken', authResult.tokens.accessToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
-        maxAge: accessMaxAge,
-        path: '/',
-      });
+      // Set both tokens as httpOnly cookies
+      setAuthCookies(res, authResult.tokens.accessToken, authResult.tokens.refreshToken, rememberMe);
 
       res.status(201).json({
         message: "Пользователь успешно зарегистрирован",
@@ -186,25 +197,8 @@ export function setupAuthRoutes(app: Express): void {
         });
       }
 
-      // Set both tokens as httpOnly cookies with appropriate maxAge
-      const maxAge = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
-      const accessMaxAge = rememberMe ? 2 * 60 * 60 * 1000 : 15 * 60 * 1000; // 2h or 15m
-      
-      res.cookie('refreshToken', authResult.tokens.refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
-        maxAge,
-        path: '/',
-      });
-      
-      res.cookie('accessToken', authResult.tokens.accessToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
-        maxAge: accessMaxAge,
-        path: '/',
-      });
+      // Set both tokens as httpOnly cookies
+      setAuthCookies(res, authResult.tokens.accessToken, authResult.tokens.refreshToken, rememberMe);
 
       res.json({
         message: "Успешный вход в систему",
@@ -257,25 +251,8 @@ export function setupAuthRoutes(app: Express): void {
       }
 
       // Set both new tokens as httpOnly cookies
-      const sessionType = result.sessionType || 'normal';
-      const refreshMaxAge = sessionType === 'remember_me' ? 30 * 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
-      const accessMaxAge = sessionType === 'remember_me' ? 2 * 60 * 60 * 1000 : 15 * 60 * 1000;
-      
-      res.cookie('accessToken', result.newTokens.accessToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
-        maxAge: accessMaxAge,
-        path: '/',
-      });
-        
-      res.cookie('refreshToken', result.newTokens.refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
-        maxAge: refreshMaxAge,
-        path: '/',
-      });
+      const rememberMe = (result.sessionType || 'normal') === 'remember_me';
+      setAuthCookies(res, result.newTokens.accessToken, result.newTokens.refreshToken, rememberMe);
 
       res.json({
         message: "Токен успешно обновлен",

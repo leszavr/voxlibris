@@ -115,11 +115,13 @@ export function useChat(options: UseChatOptions) {
       if (payload?.clubId !== clubId) return;
       const messageId: string | undefined = payload.messageId;
       if (!messageId) return;
+      
+      const markAsDeleted = (m: ChatMessageWithUser) => 
+        m.id === messageId ? { ...m, text: "[deleted]", deletedAt: new Date() as any } : m;
+      
       setState((prev) => ({
         ...prev,
-        messages: prev.messages.map((m) =>
-          m.id === messageId ? { ...m, text: "[deleted]", deletedAt: new Date() as any } : m,
-        ),
+        messages: prev.messages.map(markAsDeleted),
       }));
     };
 

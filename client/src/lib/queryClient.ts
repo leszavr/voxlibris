@@ -36,6 +36,9 @@ async function refreshAccessToken(): Promise<boolean> {
       // Клиент не получает токен в JSON
       return true;
     } catch (error) {
+      if (import.meta.env.DEV) {
+        console.error('[QueryClient] Refresh failed:', error);
+      }
       return false;
     } finally {
       isRefreshing = false;
@@ -46,22 +49,66 @@ async function refreshAccessToken(): Promise<boolean> {
   return refreshPromise;
 }
 
-export async function apiRequest<T = unknown>(
-  url: string,
-  options?: RequestInit,
-): Promise<T> {
-  const isFormData = options?.body instanceof FormData;
+// Обработка 403 ошибок
+async function handle403Error(text: string, res: Response): Promise<never> {
+  try {
+    const errorData = JSON.parse(text);
+    
+    // Ошибка активации аккаунта
+    if (errorData.code === 'ACCOUNT_NOT_ACTIVATED') {
+      const statusMessages: Record<string, string> = {
+        'pending': 'Ваш аккаунт ожидает активации администратором.',
+        'suspended': 'Ваш аккаунт заблокирован.',
+      };
+      const statusMessage = statusMessages[errorData.userStatus] || 'Ваш аккаунт неактивен.';
+      
+      globalThis.dispatchEvent(new CustomEvent('account-status-changed', { 
+        detail: { status: errorData.userStatus } 
+      }));
+      
+      throw new Error(statusMessage);
+    }
+    
+    // Ошибка подтверждения email
+    if (errorData.code === 'EMAIL_NOT_CONFIRMED') {
+      globalThis.dispatchEvent(new CustomEvent('email-verification-required'));
+      throw new Error('Необходимо подтвердить email для доступа к этой функции.');
+    }
+    
+    // Ошибка доступа к приватному клубу
+    if (errorData.code === 'PRIVATE_CLUB_ACCESS_DENIED') {
+      throw new Error(errorData.message || 'Это закрытый клуб. Для доступа необходимо получить приглашение.');
+    }
+    
+    throw new Error(errorData.message || text || res.statusText);
+  } catch (parseError) {
+    if (parseError instanceof SyntaxError) {
+      throw new Error(text || res.statusText);
+    }
+    throw parseError;
+  }
+}
 
-  let res = await fetch(url, {
+// Создание fetch запроса с правильными заголовками
+function createFetchRequest(url: string, options?: RequestInit): Promise<Response> {
+  const isFormData = options?.body instanceof FormData;
+  
+  return fetch(url, {
     method: options?.method || 'GET',
     headers: {
-      // Content-Type только для JSON, не для FormData
       ...(!isFormData && options?.body ? { "Content-Type": "application/json" } : {}),
       ...(options?.headers as Record<string, string>),
     },
     body: options?.body,
-    credentials: "include", // 🔒 Автоматически отправляет HttpOnly cookies
+    credentials: "include",
   });
+}
+
+export async function apiRequest<T = unknown>(
+  url: string,
+  options?: RequestInit,
+): Promise<T> {
+  let res = await createFetchRequest(url, options);
 
   // Если получили 401, пробуем обновить токен один раз
   if (res.status === 401) {
@@ -69,16 +116,7 @@ export async function apiRequest<T = unknown>(
       const refreshSuccess = await refreshAccessToken();
       
       if (refreshSuccess) {
-        // Повторяем запрос с обновленным cookie
-        res = await fetch(url, {
-          method: options?.method || 'GET',
-          headers: {
-            ...(!isFormData && options?.body ? { "Content-Type": "application/json" } : {}),
-            ...(options?.headers as Record<string, string>),
-          },
-          body: options?.body,
-          credentials: "include",
-        });
+        res = await createFetchRequest(url, options);
       }
     } catch (error) {
       console.error('[QueryClient] Token refresh failed on 401:', error);
@@ -90,55 +128,14 @@ export async function apiRequest<T = unknown>(
   if (!res.ok) {
     const text = await res.text();
     
-    // Обрабатываем ошибки 401 - требуется авторизация
     if (res.status === 401) {
       throw new Error('Требуется авторизация. Пожалуйста, войдите в систему.');
     }
     
-    // Обрабатываем ошибки 403
     if (res.status === 403) {
-      try {
-        const errorData = JSON.parse(text);
-        
-        // Ошибка активации аккаунта
-        if (errorData.code === 'ACCOUNT_NOT_ACTIVATED') {
-          let statusMessage = 'Ваш аккаунт неактивен.';
-          if (errorData.userStatus === 'pending') statusMessage = 'Ваш аккаунт ожидает активации администратором.';
-          else if (errorData.userStatus === 'suspended') statusMessage = 'Ваш аккаунт заблокирован.';
-          
-          // Генерируем событие для обновления состояния пользователя
-          globalThis.dispatchEvent(new CustomEvent('account-status-changed', { 
-            detail: { status: errorData.userStatus } 
-          }));
-          
-          throw new Error(statusMessage);
-        }
-        
-        // Ошибка подтверждения email
-        if (errorData.code === 'EMAIL_NOT_CONFIRMED') {
-          // Генерируем событие для показа модального окна
-          globalThis.dispatchEvent(new CustomEvent('email-verification-required'));
-          throw new Error('Необходимо подтвердить email для доступа к этой функции.');
-        }
-        
-        // Ошибка доступа к приватному клубу
-        if (errorData.code === 'PRIVATE_CLUB_ACCESS_DENIED') {
-          throw new Error(errorData.message || 'Это закрытый клуб. Для доступа необходимо получить приглашение.');
-        }
-        
-        // Если JSON распарсился, используем message из ответа
-        throw new Error(errorData.message || text || res.statusText);
-      } catch (parseError) {
-        // Если не смогли распарсить JSON, это может быть обычная текстовая ошибка
-        if (parseError instanceof SyntaxError) {
-          throw new Error(text || res.statusText);
-        }
-        // Если это другая ошибка (например, из блока if выше), пробрасываем её
-        throw parseError;
-      }
+      return handle403Error(text, res);
     }
     
-    // Для других ошибок
     throw new Error(`${res.status}: ${text}`);
   }
 
