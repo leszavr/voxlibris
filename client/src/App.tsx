@@ -40,7 +40,7 @@ function Router() {
     <Switch>
       <Route path="/" component={Home} />
       <Route path="/catalog" component={Catalog} />
-      <Route path="/reader-studio" component={ReaderStudio} />
+      <Route path="/studio/:clubId/:bookId/:chapter?" component={ReaderStudio} />
 
       {/* Club Routes */}
       <Route path="/clubs" component={MyClubs} />

@@ -487,10 +487,20 @@ export default function ClubDetails() {
 
                 {/* Кнопки управления книгой */}
                 <div className="flex flex-col gap-2 pt-2">
+                  {isOwner && club.book && (
+                    <Button
+                      onClick={() => setLocation(`/studio/${clubId}/${club.book.id}`)}
+                      className="w-full bg-amber-600 hover:bg-amber-700"
+                    >
+                      <BookOpen className="w-4 h-4 mr-2" />
+                      Открыть студию
+                    </Button>
+                  )}
                   {isMember && club.book && (
                     <Button
                       onClick={() => setLocation(`/clubs/${clubId}/books/${club.book.id}/read`)}
                       className="w-full"
+                      variant="outline"
                     >
                       <BookOpen className="w-4 h-4 mr-2" />
                       Читать

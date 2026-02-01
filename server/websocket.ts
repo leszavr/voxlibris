@@ -1,4 +1,5 @@
 import { Server as SocketIOServer, Socket } from "socket.io";
+import jwt, { type JwtPayload } from "jsonwebtoken";
 import { storage } from "./storage.js";
 import type { 
   SessionPositionUpdate, 
@@ -8,12 +9,16 @@ import type {
 interface AuthenticatedSocket extends Socket {
   userId?: string;
   currentSession?: string;
+  lastReactionTime?: number;
 }
 
 // WebSocket connection tracking for security
 const userConnections = new Map<string, Set<string>>();
 const MAX_CONNECTIONS_PER_USER = 5;
 const MAX_TOTAL_CONNECTIONS = 1000;
+
+// Флуд-контроль для реакций (1 реакция/10 сек согласно ТЗ)
+const REACTION_COOLDOWN_MS = 10000;
 
 // Helper function to handle leaving current session
 async function leaveCurrentSession(socket: AuthenticatedSocket) {
@@ -44,44 +49,89 @@ async function leaveCurrentSession(socket: AuthenticatedSocket) {
 }
 
 export function setupWebSocketHandlers(io: SocketIOServer) {
+  console.log('[WebSocket] Setting up main WebSocket handlers...');
+  
   // Authentication middleware for WebSocket connections with connection limits
   io.use(async (socket: AuthenticatedSocket, next) => {
     try {
+      console.log('[WebSocket] New connection attempt');
+
       // Check total connection limit
       const totalConnections = io.sockets.sockets.size;
       if (totalConnections >= MAX_TOTAL_CONNECTIONS) {
-        console.warn('WebSocket connection limit reached:', totalConnections);
+        console.warn('[WebSocket] Connection limit reached:', totalConnections);
         return next(new Error("Server connection limit reached"));
       }
 
-      // Use session-based authentication for WebSocket
-      const userId = socket.handshake.auth.userId;
-      console.log('WebSocket auth attempt for userId:', userId);
-      
-      if (!userId) {
-        console.error('WebSocket auth failed: No userId provided');
-        return next(new Error("Authentication required"));
+      // Extract JWT token from multiple sources (same as chat WebSocket)
+      const token =
+        (socket.handshake.auth && (socket.handshake.auth as any).token) ||
+        socket.handshake.headers.authorization?.replace("Bearer ", "") ||
+        socket.handshake.headers.cookie?.match(/accessToken=([^;]+)/)?.[1];
+
+      console.log('[WebSocket] Token found:', !!token);
+
+      if (!token) {
+        console.error('[WebSocket] ❌ No authentication token provided');
+        return next(new Error("Authentication token required"));
       }
+
+      // Verify JWT token
+      const secret = process.env.JWT_SECRET;
+      if (!secret) {
+        console.error('[WebSocket] ❌ JWT_SECRET not configured');
+        return next(new Error("JWT_SECRET not configured"));
+      }
+
+      const decoded = jwt.verify(token, secret) as JwtPayload & {
+        userId: string;
+        username: string;
+        role: string;
+        status?: string;
+      };
+
+      console.log('[WebSocket] Token decoded, userId:', decoded.userId);
+
+      if (!decoded.userId) {
+        console.error('[WebSocket] ❌ Invalid token payload');
+        return next(new Error("Invalid token payload"));
+      }
+
+      const userId = decoded.userId;
 
       // Check per-user connection limit
       const userConnectionCount = userConnections.get(userId)?.size || 0;
       if (userConnectionCount >= MAX_CONNECTIONS_PER_USER) {
-        console.warn(`WebSocket user connection limit reached for ${userId}:`, userConnectionCount);
+        console.warn(`[WebSocket] ❌ User connection limit reached for ${userId}:`, userConnectionCount);
         return next(new Error("Too many connections"));
       }
 
+      console.log('[WebSocket] Fetching user from database:', userId);
+
       // Verify user exists in database
       const user = await storage.getUser(userId);
+      
+      console.log('[WebSocket] User fetch result:', user ? 'found' : 'not found');
+      
       if (!user) {
-        console.error('WebSocket auth failed: User not found:', userId);
+        console.error('[WebSocket] ❌ User not found:', userId);
         return next(new Error("User not found"));
       }
 
       socket.userId = userId;
-      console.log('WebSocket authenticated for user:', userId);
+      console.log('[WebSocket] ✅ Authenticated for user:', userId);
       next();
     } catch (error) {
-      console.error('WebSocket authentication error:', error);
+      if (error instanceof jwt.TokenExpiredError) {
+        console.error('[WebSocket] ❌ Token expired');
+        return next(new Error("Token expired"));
+      }
+      if (error instanceof jwt.JsonWebTokenError) {
+        console.error('[WebSocket] ❌ Invalid token:', error.message);
+        return next(new Error("Invalid token"));
+      }
+      console.error('[WebSocket] ❌ Authentication exception:', error);
+      console.error('[WebSocket] Error stack:', error instanceof Error ? error.stack : 'No stack');
       next(new Error("Authentication failed"));
     }
   });
@@ -290,6 +340,90 @@ export function setupWebSocketHandlers(io: SocketIOServer) {
       }
     });
 
+    // Отправка реакции (флуд-контроль 1 реакция/10 сек)
+    socket.on("send_reaction", async (data: { sessionId: string; type: string; timestamp: number }) => {
+      try {
+        if (!socket.userId) {
+          socket.emit("error", { message: "User not authenticated" });
+          return;
+        }
+
+        // Проверка флуд-контроля
+        const now = Date.now();
+        if (socket.lastReactionTime && (now - socket.lastReactionTime) < REACTION_COOLDOWN_MS) {
+          socket.emit("error", { message: "Please wait before sending another reaction" });
+          return;
+        }
+
+        // Проверка что сессия активна
+        const session = await storage.getReadingSession(data.sessionId);
+        if (!session?.isLive) {
+          socket.emit("error", { message: "Session not active" });
+          return;
+        }
+
+        socket.lastReactionTime = now;
+
+        // Отправляем реакцию всем в сессии (включая чтеца)
+        io.to(`session_${data.sessionId}`).emit("reaction_received", {
+          type: data.type,
+          userId: socket.userId,
+          timestamp: data.timestamp
+        });
+
+        console.log(`User ${socket.userId} sent reaction ${data.type} to session ${data.sessionId}`);
+      } catch (error) {
+        console.error("Error sending reaction:", error);
+        socket.emit("error", { message: "Failed to send reaction" });
+      }
+    });
+
+    // Присоединение к аудио сессии
+    socket.on("join_audio_session", async (data: { sessionId: string }) => {
+      try {
+        if (!socket.userId) {
+          socket.emit("error", { message: "User not authenticated" });
+          return;
+        }
+
+        await socket.join(`audio_${data.sessionId}`);
+        console.log(`User ${socket.userId} joined audio session ${data.sessionId}`);
+      } catch (error) {
+        console.error("Error joining audio session:", error);
+        socket.emit("error", { message: "Failed to join audio session" });
+      }
+    });
+
+    // Получение аудио чанка от чтеца
+    socket.on("audio_chunk", async (data: { sessionId: string; data: any }) => {
+      try {
+        if (!socket.userId) return;
+
+        // Ретранслируем аудио всем слушателям в сессии
+        socket.to(`audio_${data.sessionId}`).emit("audio_stream", {
+          data: data.data,
+          timestamp: Date.now()
+        });
+      } catch (error) {
+        console.error("Error handling audio chunk:", error);
+      }
+    });
+
+    // Уведомление о mute микрофона
+    socket.on("audio_muted", async (data: { sessionId: string; muted: boolean }) => {
+      try {
+        if (!socket.userId) return;
+
+        // Уведомляем всех слушателей
+        socket.to(`session_${data.sessionId}`).emit("reader_muted", {
+          muted: data.muted,
+          timestamp: Date.now()
+        });
+      } catch (error) {
+        console.error("Error handling audio mute:", error);
+      }
+    });
+
     // Handle disconnect
     socket.on("disconnect", async (reason) => {
       console.log(`User ${socket.userId} disconnected: ${reason}`);
@@ -300,6 +434,6 @@ export function setupWebSocketHandlers(io: SocketIOServer) {
     });
   });
 
-
+  console.log('[WebSocket] ✅ Main WebSocket handlers setup complete');
   return io;
 }
