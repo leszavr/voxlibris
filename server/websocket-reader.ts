@@ -25,7 +25,22 @@ interface AuthenticatedSocket extends Socket {
 // Улучшенная аутентификация через JWT с проверкой пользователя в БД
 async function authenticateSocket(socket: Socket, next: (err?: Error) => void) {
   try {
-    const token = socket.handshake.auth.token || socket.handshake.headers.authorization?.replace("Bearer ", "");
+    // 🔒 SECURITY: Читаем токен из HttpOnly cookie или Authorization header (fallback)
+    const cookieHeader = socket.handshake.headers.cookie;
+    let token: string | undefined;
+    
+    if (cookieHeader) {
+      const cookies = cookieHeader.split(';').map(c => c.trim());
+      const accessTokenCookie = cookies.find(c => c.startsWith('accessToken='));
+      if (accessTokenCookie) {
+        token = accessTokenCookie.split('=')[1];
+      }
+    }
+    
+    // Fallback: Authorization header (для обратной совместимости)
+    if (!token) {
+      token = socket.handshake.auth.token || socket.handshake.headers.authorization?.replace("Bearer ", "");
+    }
     
     if (!token) {
       return next(new Error('Authentication token required'));

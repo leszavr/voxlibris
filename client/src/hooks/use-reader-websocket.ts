@@ -23,15 +23,13 @@ export function useReaderWebSocket(options: UseReaderWebSocketOptions) {
     error: null,
   });
 
-  // Получаем токен из localStorage
-  const token = localStorage.getItem("accessToken") || "";
+  // 🔒 HttpOnly cookies автоматически отправляются через withCredentials
 
   // Инициализация клиента
   useEffect(() => {
-    if (!token || !autoConnect) return;
+    if (!autoConnect) return;
 
     const client = new ReaderWebSocketClient({
-      token,
       onConnect: () => {
         setState((prev) => ({ ...prev, connected: true, error: null }));
       },
@@ -59,7 +57,7 @@ export function useReaderWebSocket(options: UseReaderWebSocketOptions) {
         clientRef.current.disconnect();
       }
     };
-  }, [token, autoConnect]);
+  }, [autoConnect]);
 
   // Присоединение к комнате книги
   useEffect(() => {

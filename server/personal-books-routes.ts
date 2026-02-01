@@ -98,6 +98,9 @@ router.post('/upload', jwtAuth, requireActiveUser, upload.single('file'), async 
             parsedMetadata: metadata,
             createdAt: new Date()
         });
+        
+        console.log(`📤 [PersonalBooks] Upload session created: ${sessionId} for user ${req.user.id}`);
+        console.log(`📖 [PersonalBooks] Book: "${title}" by ${author} (${req.file.buffer.length} bytes)`);
 
         // Convert cover image buffer to base64 string for preview
         let coverPreview: string | undefined;
@@ -235,6 +238,9 @@ router.post('/upload/:sessionId/confirm', jwtAuth, requireActiveUser, async (req
             storagePath: storagePath,
             coverUrl: coverUrl,
         });
+        
+        console.log(`✅ [PersonalBooks] Book created: ${book.id} - "${book.title}" saved to MinIO: ${storagePath}`);
+        console.log(`🖼️ [PersonalBooks] Cover URL: ${coverUrl || 'none'}`);
 
         uploadSessions.delete(sessionId);
         res.json(book);

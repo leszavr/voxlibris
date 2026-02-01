@@ -7,44 +7,14 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
-// Получить JWT токен из localStorage
-function getAuthToken(): string | null {
-  try {
-    return localStorage.getItem('accessToken');
-  } catch {
-    return null;
-  }
-}
+// 🔒 HttpOnly cookies - токены управляются сервером
+// Клиент не имеет доступа к JWT токенам
 
-// Сохранить токен в localStorage
-function setAuthToken(token: string | null): void {
-  try {
-    if (token) {
-      localStorage.setItem('accessToken', token);
-    } else {
-      localStorage.removeItem('accessToken');
-    }
-  } catch {
-    // Игнорируем ошибки localStorage
-  }
-}
-
-// Проверить, истек ли токен
-function isTokenExpired(token: string): boolean {
-  try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
-    const currentTime = Math.floor(Date.now() / 1000);
-    return payload.exp < currentTime;
-  } catch {
-    return true;
-  }
-}
-
-// Обновить access token через refresh token
+// Обновить access token через refresh token (оба в HttpOnly cookies)
 let isRefreshing = false;
-let refreshPromise: Promise<string> | null = null;
+let refreshPromise: Promise<boolean> | null = null;
 
-async function refreshAccessToken(): Promise<string> {
+async function refreshAccessToken(): Promise<boolean> {
   // Защита от одновременных запросов на обновление
   if (isRefreshing && refreshPromise) {
     return refreshPromise;
@@ -55,24 +25,18 @@ async function refreshAccessToken(): Promise<string> {
     try {
       const response = await fetch('/api/auth/refresh', {
         method: 'POST',
-        credentials: 'include', // Для отправки httpOnly refresh cookie
+        credentials: 'include', // 🔒 Отправляет refreshToken cookie
       });
 
       if (!response.ok) {
         throw new Error('Failed to refresh token');
       }
 
-      const data = await response.json();
-      setAuthToken(data.accessToken);
-      
-      // Уведомляем приложение об успешном обновлении токена
-      globalThis.dispatchEvent(new CustomEvent('token-refreshed'));
-      
-      return data.accessToken;
+      // ✅ Сервер установил новый accessToken cookie
+      // Клиент не получает токен в JSON
+      return true;
     } catch (error) {
-      // При ошибке обновления очищаем токен
-      setAuthToken(null);
-      throw error;
+      return false;
     } finally {
       isRefreshing = false;
       refreshPromise = null;
@@ -82,76 +46,42 @@ async function refreshAccessToken(): Promise<string> {
   return refreshPromise;
 }
 
-// Создать заголовки с аутентификацией
-function createAuthHeaders(additionalHeaders: Record<string, string> = {}): Record<string, string> {
-  const token = getAuthToken();
-  const headers: Record<string, string> = {
-    ...additionalHeaders,
-  };
-
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
-  return headers;
-}
-
 export async function apiRequest<T = unknown>(
   url: string,
   options?: RequestInit,
 ): Promise<T> {
   const isFormData = options?.body instanceof FormData;
 
-  // Проверяем токен перед запросом
-  const token = getAuthToken();
-  if (token && isTokenExpired(token)) {
-    try {
-      await refreshAccessToken();
-    } catch (error) {
-      console.error('Token refresh failed:', error);
-      // Не выбрасываем ошибку сразу - возможно запрос публичный
-      // Очищаем токен и продолжаем запрос без авторизации
-      setAuthToken(null);
-    }
-  }
-
-  const headers = createAuthHeaders(
-    // Не устанавливаем Content-Type для FormData - браузер сделает это автоматически с boundary
-    !isFormData && options?.body ? { "Content-Type": "application/json" } : {}
-  );
-
   let res = await fetch(url, {
     method: options?.method || 'GET',
     headers: {
-      ...headers,
+      // Content-Type только для JSON, не для FormData
+      ...(!isFormData && options?.body ? { "Content-Type": "application/json" } : {}),
       ...(options?.headers as Record<string, string>),
     },
     body: options?.body,
-    credentials: "include", // Сохраняем для refresh токенов в cookies
+    credentials: "include", // 🔒 Автоматически отправляет HttpOnly cookies
   });
 
-  // Если получили 401 и есть токен, пробуем обновить токен один раз
-  if (res.status === 401 && getAuthToken()) {
+  // Если получили 401, пробуем обновить токен один раз
+  if (res.status === 401) {
     try {
-      await refreshAccessToken();
+      const refreshSuccess = await refreshAccessToken();
       
-      // Повторяем запрос с новым токеном
-      const newHeaders = createAuthHeaders(
-        !isFormData && options?.body ? { "Content-Type": "application/json" } : {}
-      );
-
-      res = await fetch(url, {
-        method: options?.method || 'GET',
-        headers: {
-          ...newHeaders,
-          ...(options?.headers as Record<string, string>),
-        },
-        body: options?.body,
-        credentials: "include",
-      });
+      if (refreshSuccess) {
+        // Повторяем запрос с обновленным cookie
+        res = await fetch(url, {
+          method: options?.method || 'GET',
+          headers: {
+            ...(!isFormData && options?.body ? { "Content-Type": "application/json" } : {}),
+            ...(options?.headers as Record<string, string>),
+          },
+          body: options?.body,
+          credentials: "include",
+        });
+      }
     } catch (error) {
-      console.error('Token refresh failed on 401:', error);
-      setAuthToken(null);
+      console.error('[QueryClient] Token refresh failed on 401:', error);
       // Не выбрасываем ошибку, а возвращаем 401 как есть - UI обработает
     }
   }
@@ -228,37 +158,21 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
     async ({ queryKey }) => {
-      // Проверяем токен перед запросом
-      const token = getAuthToken();
-      if (token && isTokenExpired(token)) {
-        try {
-          await refreshAccessToken();
-        } catch (error) {
-          if (unauthorizedBehavior === "returnNull") {
-            return null;
-          }
-          throw error;
-        }
-      }
-
-      const headers = createAuthHeaders();
-
       let res = await fetch(queryKey.join("/"), {
-        headers,
-        credentials: "include",
+        credentials: "include", // 🔒 HttpOnly cookies
       });
 
       // Если получили 401, пробуем обновить токен
       if (res.status === 401) {
         try {
-          await refreshAccessToken();
+          const refreshSuccess = await refreshAccessToken();
           
-          // Повторяем запрос с новым токеном
-          const newHeaders = createAuthHeaders();
-          res = await fetch(queryKey.join("/"), {
-            headers: newHeaders,
-            credentials: "include",
-          });
+          if (refreshSuccess) {
+            // Повторяем запрос с обновленным cookie
+            res = await fetch(queryKey.join("/"), {
+              credentials: "include",
+            });
+          }
         } catch (error) {
           if (unauthorizedBehavior === "returnNull") {
             return null;

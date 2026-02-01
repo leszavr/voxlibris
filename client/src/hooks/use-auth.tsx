@@ -27,18 +27,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const fetchCurrentUser = async () => {
     try {
-      // Сначала проверяем локальное состояние токена
-      if (!authAPI.isAuthenticated()) {
-        setUser(null);
-        return;
-      }
-
-      // Получаем актуальные данные пользователя с сервера
+      // Токен в HttpOnly cookie, просто делаем запрос
       const response = await authAPI.getCurrentUser();
       setUser(response.user);
     } catch (error) {
       if (import.meta.env.DEV) {
-        console.error('Failed to fetch current user:', error);
+        console.error('[useAuth] Failed to fetch current user:', error);
       }
       // Очищаем состояние при ошибке
       authAPI.clearTokens();
@@ -77,7 +71,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       await authAPI.logout();
     } catch (error) {
       if (import.meta.env.DEV) {
-        console.error('Logout request failed:', error);
+        console.error('[useAuth] Logout request failed:', error);
       }
       // Продолжаем выход даже если запрос не удался
     } finally {
@@ -94,19 +88,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
   };
 
   // Принудительная синхронизация состояния с сервером
-  // eslint-disable-next-line sonarjs/no-identical-functions
   const syncAuthState = async () => {
     setIsLoading(true);
     try {
-      // Проверяем локальное состояние токена
-      if (!authAPI.isAuthenticated()) {
-        setUser(null);
-        return;
-      }
-
-      // Принудительно обновляем токен если нужно
-      const refreshSuccess = await authAPI.forceRefreshToken();
-      if (!refreshSuccess) {
+      // Проверяем auth через запрос к серверу
+      const authSuccess = await authAPI.checkAuth();
+      if (!authSuccess) {
         setUser(null);
         return;
       }
@@ -115,7 +102,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       await fetchCurrentUser();
     } catch (error) {
       if (import.meta.env.DEV) {
-        console.error('Auth sync failed:', error);
+        console.error('[useAuth] Auth sync failed:', error);
       }
       authAPI.clearTokens();
       setUser(null);
@@ -130,7 +117,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     // Периодическая проверка состояния токена (каждые 5 минут)
     const interval = setInterval(() => {
-      if (authAPI.isAuthenticated()) {
+      if (authAPI.isAuth()) {
         fetchCurrentUser().catch(() => {
           // Если проверка не удалась, очищаем состояние
           authAPI.clearTokens();
@@ -139,37 +126,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
     }, 5 * 60 * 1000);
 
-    // Слушаем событие обновления токена для автоматического обновления пользователя
-    const handleTokenRefresh = () => {
-      if (authAPI.isAuthenticated()) {
-        fetchCurrentUser().catch((error) => {
-          if (import.meta.env.DEV) {
-            console.error('Failed to update user after token refresh:', error);
-          }
-        });
-      }
+    // Слушаем событие auth-error для автоматического logout
+    const handleAuthError = () => {
+      authAPI.clearTokens();
+      setUser(null);
     };
-
-    globalThis.addEventListener('token-refreshed', handleTokenRefresh);
-
-    // Обработчик изменения статуса аккаунта
-    const handleAccountStatusChanged = () => {
-      if (import.meta.env.DEV) {
-        console.log('Account status changed, refreshing user data...');
-      }
-      fetchCurrentUser().catch((error) => {
-        if (import.meta.env.DEV) {
-          console.error('Failed to update user after status change:', error);
-        }
-      });
-    };
-
-    globalThis.addEventListener('account-status-changed', handleAccountStatusChanged);
+    window.addEventListener('auth-error', handleAuthError);
 
     return () => {
       clearInterval(interval);
-      globalThis.removeEventListener('token-refreshed', handleTokenRefresh);
-      globalThis.removeEventListener('account-status-changed', handleAccountStatusChanged);
+      window.removeEventListener('auth-error', handleAuthError);
     };
   }, []);
 

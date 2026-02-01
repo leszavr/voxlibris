@@ -27,83 +27,12 @@ export function useChat(options: UseChatOptions) {
     participants: [],
   });
 
-  const getToken = () => {
-    if (typeof window === "undefined") return "";
-    const token = localStorage.getItem("accessToken");
-    if (!token) {
-      console.warn("[useChat] No authentication token found");
-      return "";
-    }
-    
-    // Проверим базовую валидность токена (формат)
-    try {
-      const parts = token.split('.');
-      if (parts.length !== 3) {
-        console.warn("[useChat] Invalid token format");
-        return "";
-      }
-      // Декодируем payload для проверки срока действия
-      const payload = JSON.parse(atob(parts[1]));
-      const now = Math.floor(Date.now() / 1000);
-      if (payload.exp && payload.exp < now) {
-        console.warn("[useChat] Token expired");
-        localStorage.removeItem("accessToken");
-        return "";
-      }
-    } catch (e) {
-      console.warn("[useChat] Token validation failed:", e);
-      localStorage.removeItem("accessToken");
-      return "";
-    }
-    
-    return token;
-  };
-  
-  const getFreshToken = () => {
-    const token = getToken();
-    if (!token) return token;
-    
-    // Проверяем свежесть токена перед каждым WebSocket подключением
-    try {
-      const parts = token.split('.');
-      if (parts.length === 3) {
-        const payload = JSON.parse(atob(parts[1]));
-        const now = Math.floor(Date.now() / 1000);
-        const expThreshold = 60; // 60 секунд запаса
-        
-        if (payload.exp && payload.exp < (now - expThreshold)) {
-          console.warn("[useChat] Token too old for WebSocket, removing...");
-          localStorage.removeItem("accessToken");
-          localStorage.removeItem("refreshToken");
-          return "";
-        }
-      }
-    } catch (e) {
-      console.warn("[useChat] Token validation failed:", e);
-      localStorage.removeItem("accessToken");
-      return "";
-    }
-    
-    return token;
-  };
-
-  const token = getFreshToken();
+  // 🔒 С HttpOnly cookies не нужно проверять токен - сервер делает это автоматически
 
   useEffect(() => {
-    if (!token || !autoConnect) return;
-    
-    // Проверим аутентификацию перед подключением
-    const currentToken = getToken();
-    if (!currentToken) {
-      setState((prev) => ({ 
-        ...prev, 
-        error: new Error("Требуется авторизация. Войдите в систему.")
-      }));
-      return;
-    }
+    if (!autoConnect) return;
 
     const config: ChatWebSocketConfig = {
-      token,
       onConnect: () => {
         setState((prev) => ({ ...prev, connected: true, error: null }));
 
@@ -150,7 +79,7 @@ export function useChat(options: UseChatOptions) {
       clientRef.current?.disconnect();
       clientRef.current = null;
     };
-  }, [token, autoConnect, clubId, channel]);
+  }, [autoConnect, clubId, channel]);
 
   useEffect(() => {
     const client = clientRef.current;

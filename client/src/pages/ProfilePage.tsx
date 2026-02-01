@@ -66,14 +66,13 @@ export default function ProfilePage() {
 
       const endpoint =
         profileId === "current" ? "/api/users/current/profile" : `/api/users/${profileId}/profile`;
-      const token = localStorage.getItem("accessToken");
 
       const response = await fetch(endpoint, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
+        credentials: 'include', // 🔒 HttpOnly cookies
         body: JSON.stringify(data),
       });
 
@@ -112,13 +111,12 @@ export default function ProfilePage() {
     queryFn: async () => {
       const endpoint =
         profileId === "current" ? "/api/users/current/profile" : `/api/users/${profileId}/profile`;
-      const token = localStorage.getItem("accessToken");
 
       const response = await fetch(endpoint, {
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
+        credentials: 'include', // 🔒 HttpOnly cookies
       });
       if (!response.ok) throw new Error("Failed to load profile");
       const data = await response.json();
@@ -147,13 +145,12 @@ export default function ProfilePage() {
     queryFn: async () => {
       const endpoint =
         profileId === "current" ? "/api/users/current/clubs" : `/api/users/${profileId}/clubs`;
-      const token = localStorage.getItem("accessToken");
 
       const response = await fetch(endpoint, {
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
+        credentials: 'include', // 🔒 HttpOnly cookies
       });
       if (!response.ok) return [];
       return response.json();

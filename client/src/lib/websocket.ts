@@ -7,7 +7,6 @@ import type {
 
 export interface ReaderWebSocketConfig {
   url?: string;
-  token: string;
   onConnect?: () => void;
   onDisconnect?: () => void;
   onError?: (error: Error) => void;
@@ -52,9 +51,7 @@ export class ReaderWebSocketClient {
 
     return new Promise((resolve, reject) => {
       this.socket = io(`${this.config.url!}/reader`, {
-        auth: {
-          token: this.config.token,
-        },
+        withCredentials: true, // 🔒 Отправляем HttpOnly cookies
         reconnection: true,
         reconnectionAttempts: this.config.reconnectionAttempts,
         reconnectionDelay: this.config.reconnectionDelay,
