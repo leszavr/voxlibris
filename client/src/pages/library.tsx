@@ -1,12 +1,10 @@
 import classicCover from "@assets/generated_images/classic_novel_book_cover_design.png";
 // Import existing covers as fallbacks
 import modernCover from "@assets/generated_images/modern_fiction_book_cover_design.png";
-import mysteryCover from "@assets/generated_images/mystery_thriller_book_cover_design.png";
 import {
   ArrowLeft,
   Bookmark,
   BookOpen,
-  CheckCircle2,
   Clock,
   Edit,
   Eye,
@@ -91,13 +89,13 @@ const HISTORY = [
 ];
 
 export default function Library() {
-  const { user, isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth();
   const [, setLocation] = useLocation();
   const { data: userBooksResponse, isLoading, refetch } = usePersonalBooks();
   const books = userBooksResponse || [];
 
   // Reading history data
-  const { data: historyData, isLoading: historyLoading } = useReadingHistory();
+  const { data: historyData } = useReadingHistory();
   const clearHistory = useClearReadingHistory();
 
   // State for book management dialogs
@@ -181,9 +179,10 @@ export default function Library() {
       setEditingBook(null);
       refetch();
     } catch (error) {
+      console.error('Failed to update book:', error);
       toast({
         title: "Ошибка",
-        description: "Не удалось обновить книгу",
+        description: error instanceof Error ? error.message : "Не удалось обновить книгу",
         variant: "destructive",
       });
     }
@@ -203,9 +202,10 @@ export default function Library() {
       setDeletingBook(null);
       refetch();
     } catch (error) {
+      console.error('Failed to delete book:', error);
       toast({
         title: "Ошибка",
-        description: "Не удалось удалить книгу",
+        description: error instanceof Error ? error.message : "Не удалось удалить книгу",
         variant: "destructive",
       });
     }
@@ -213,6 +213,158 @@ export default function Library() {
 
   const handleReadBook = (book: any) => {
     setLocation(`/books/${book.id}/read`);
+  };
+
+  const getBookFormatLabel = (contentType: string) => {
+    if (contentType === "epub") return "EPUB";
+    if (contentType === "fb2") return "FB2";
+    return "Книга";
+  };
+
+  const renderBooksList = () => {
+    if (isLoading) {
+      return (
+        <div className="space-y-6">
+          {[1, 2].map((i) => (
+            <div
+              key={i}
+              className="flex flex-col sm:flex-row gap-6 bg-card p-6 rounded-xl border"
+            >
+              <Skeleton className="w-full sm:w-48 aspect-[2/3] shrink-0 rounded-lg" />
+              <div className="flex-1 space-y-4">
+                <div className="space-y-2">
+                  <Skeleton className="h-6 w-2/3" />
+                  <Skeleton className="h-4 w-1/3" />
+                </div>
+                <Skeleton className="h-4 w-1/4" />
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-2 w-full" />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    if (books && Array.isArray(books) && books.length > 0) {
+      return books.map((book: any) => (
+        <div
+          key={book.id}
+          className="group flex flex-col sm:flex-row gap-6 bg-card p-6 rounded-xl border hover:border-primary/20 transition-all"
+        >
+          <div className="w-full sm:w-48 aspect-[2/3] shrink-0 rounded-lg overflow-hidden shadow-md">
+            <img
+              src={book.coverUrl || modernCover}
+              alt={book.title}
+              className="w-full h-full object-cover"
+              onError={(e) => {
+                e.currentTarget.src = modernCover;
+              }}
+            />
+          </div>
+
+          <div className="flex-1 flex flex-col justify-between space-y-4">
+            <div>
+              <div className="flex justify-between items-start">
+                <div>
+                  <h3 className="text-xl font-serif font-bold">{book.title}</h3>
+                  <p className="text-muted-foreground">{book.author}</p>
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onClick={() => handleReadBook(book)}
+                      className="flex items-center gap-2"
+                    >
+                      <Eye className="h-4 w-4" />
+                      Читать
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => handleEditBook(book)}
+                      className="flex items-center gap-2"
+                    >
+                      <Edit className="h-4 w-4" />
+                      Редактировать
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => setDeletingBook(book)}
+                      className="text-destructive flex items-center gap-2"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Удалить из библиотеки
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+
+              <div className="mt-4 flex items-center gap-2 text-sm text-accent-foreground/80 font-medium bg-accent/10 w-fit px-2 py-1 rounded">
+                <LibraryIcon className="w-3.5 h-3.5" />
+                {getBookFormatLabel(book.contentType)}
+              </div>
+
+              {book.description && (
+                <p className="text-sm text-muted-foreground mt-3 line-clamp-2">
+                  {book.description}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              {/* Прогресс чтения */}
+              {book.progress !== undefined && book.progress > 0 && (
+                <div className="space-y-1">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Прогресс</span>
+                    <span className="font-medium">{book.progress}%</span>
+                  </div>
+                  <Progress value={book.progress} className="h-2" />
+                </div>
+              )}
+
+              <div className="flex justify-end text-sm">
+                <span className="text-muted-foreground">
+                  {book.language && <span className="uppercase">{book.language}</span>}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <Clock className="w-3 h-3" />
+                Добавлено: {new Date(book.createdAt).toLocaleDateString("ru-RU")}
+              </p>
+            </div>
+
+            <div className="pt-2 flex gap-3">
+              <Button
+                className="flex-1 sm:flex-none gap-2"
+                onClick={() => handleReadBook(book)}
+              >
+                <PlayCircle className="w-4 h-4" /> Читать
+              </Button>
+              <Button variant="outline" className="flex-1 sm:flex-none">
+                Подробнее
+              </Button>
+            </div>
+          </div>
+        </div>
+      ));
+    }
+
+    return (
+      <div className="text-center py-16 bg-secondary/20 rounded-xl border border-dashed">
+        <LibraryIcon className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+        <h3 className="font-medium">Ваша библиотека пуста</h3>
+        <p className="text-muted-foreground max-w-sm mx-auto mt-2">
+          Добавьте свою первую книгу, загрузив файл EPUB или FB2 через кнопку "Загрузить
+          книгу" выше.
+        </p>
+      </div>
+    );
   };
 
   return (
@@ -243,147 +395,7 @@ export default function Library() {
           </TabsList>
 
           <TabsContent value="current" className="space-y-6">
-            {isLoading ? (
-              <div className="space-y-6">
-                {[1, 2].map((i) => (
-                  <div
-                    key={i}
-                    className="flex flex-col sm:flex-row gap-6 bg-card p-6 rounded-xl border"
-                  >
-                    <Skeleton className="w-full sm:w-48 aspect-[2/3] shrink-0 rounded-lg" />
-                    <div className="flex-1 space-y-4">
-                      <div className="space-y-2">
-                        <Skeleton className="h-6 w-2/3" />
-                        <Skeleton className="h-4 w-1/3" />
-                      </div>
-                      <Skeleton className="h-4 w-1/4" />
-                      <div className="space-y-2">
-                        <Skeleton className="h-4 w-full" />
-                        <Skeleton className="h-2 w-full" />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : books && Array.isArray(books) && books.length > 0 ? (
-              books.map((book: any) => (
-                <div
-                  key={book.id}
-                  className="group flex flex-col sm:flex-row gap-6 bg-card p-6 rounded-xl border hover:border-primary/20 transition-all"
-                >
-                  <div className="w-full sm:w-48 aspect-[2/3] shrink-0 rounded-lg overflow-hidden shadow-md">
-                    <img
-                      src={book.coverUrl || modernCover}
-                      alt={book.title}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        e.currentTarget.src = modernCover;
-                      }}
-                    />
-                  </div>
-
-                  <div className="flex-1 flex flex-col justify-between space-y-4">
-                    <div>
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <h3 className="text-xl font-serif font-bold">{book.title}</h3>
-                          <p className="text-muted-foreground">{book.author}</p>
-                        </div>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={() => handleReadBook(book)}
-                              className="flex items-center gap-2"
-                            >
-                              <Eye className="h-4 w-4" />
-                              Читать
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => handleEditBook(book)}
-                              className="flex items-center gap-2"
-                            >
-                              <Edit className="h-4 w-4" />
-                              Редактировать
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => setDeletingBook(book)}
-                              className="text-destructive flex items-center gap-2"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                              Удалить из библиотеки
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-
-                      <div className="mt-4 flex items-center gap-2 text-sm text-accent-foreground/80 font-medium bg-accent/10 w-fit px-2 py-1 rounded">
-                        <LibraryIcon className="w-3.5 h-3.5" />
-                        {book.contentType === "epub"
-                          ? "EPUB"
-                          : book.contentType === "fb2"
-                            ? "FB2"
-                            : "Книга"}
-                      </div>
-
-                      {book.description && (
-                        <p className="text-sm text-muted-foreground mt-3 line-clamp-2">
-                          {book.description}
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="space-y-2">
-                      {/* Прогресс чтения */}
-                      {book.progress !== undefined && book.progress > 0 && (
-                        <div className="space-y-1">
-                          <div className="flex justify-between text-sm">
-                            <span className="text-muted-foreground">Прогресс</span>
-                            <span className="font-medium">{book.progress}%</span>
-                          </div>
-                          <Progress value={book.progress} className="h-2" />
-                        </div>
-                      )}
-
-                      <div className="flex justify-end text-sm">
-                        <span className="text-muted-foreground">
-                          {book.language && <span className="uppercase">{book.language}</span>}
-                        </span>
-                      </div>
-                      <p className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        Добавлено: {new Date(book.createdAt).toLocaleDateString("ru-RU")}
-                      </p>
-                    </div>
-
-                    <div className="pt-2 flex gap-3">
-                      <Button
-                        className="flex-1 sm:flex-none gap-2"
-                        onClick={() => handleReadBook(book)}
-                      >
-                        <PlayCircle className="w-4 h-4" /> Читать
-                      </Button>
-                      <Button variant="outline" className="flex-1 sm:flex-none">
-                        Подробнее
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="text-center py-16 bg-secondary/20 rounded-xl border border-dashed">
-                <LibraryIcon className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="font-medium">Ваша библиотека пуста</h3>
-                <p className="text-muted-foreground max-w-sm mx-auto mt-2">
-                  Добавьте свою первую книгу, загрузив файл EPUB или FB2 через кнопку "Загрузить
-                  книгу" выше.
-                </p>
-              </div>
-            )}
+            {renderBooksList()}
           </TabsContent>
 
           <TabsContent value="history">

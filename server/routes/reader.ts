@@ -93,6 +93,89 @@ router.get("/:id/content", async (req: Request, res: Response) => {
 });
 
 /**
+ * Helper: Получение метаданных книги из books или personal_books
+ */
+async function getBookMetadata(bookId: string) {
+  // Пытаемся получить данные из books (unified table)
+  let bookData = await db
+    .select({
+      title: books.title,
+      author: books.author,
+      coverUrl: books.coverUrl,
+    })
+    .from(books)
+    .where(eq(books.id, bookId))
+    .limit(1);
+
+  // Если не найдено в books, пробуем personal_books
+  if (bookData.length === 0) {
+    bookData = await db
+      .select({
+        title: personalBooks.title,
+        author: personalBooks.author,
+        coverUrl: personalBooks.coverUrl,
+      })
+      .from(personalBooks)
+      .where(eq(personalBooks.id, bookId))
+      .limit(1);
+  }
+
+  return bookData.length > 0 ? bookData[0] : null;
+}
+
+/**
+ * Helper: Добавление книги в историю и аналитику
+ */
+async function addBookToHistory(userId: string, bookId: string, clubId: string | null) {
+  // Проверяем, не добавлена ли уже книга в историю
+  const existingHistory = await db
+    .select()
+    .from(readingHistory)
+    .where(and(
+      eq(readingHistory.userId, userId),
+      eq(readingHistory.bookId, bookId)
+    ))
+    .limit(1);
+
+  if (existingHistory.length > 0) {
+    return;
+  }
+
+  const bookMetadata = await getBookMetadata(bookId);
+  if (!bookMetadata) {
+    return;
+  }
+
+  // Добавляем в историю
+  await db.insert(readingHistory).values({
+    userId,
+    bookId,
+    clubId: clubId || null,
+    bookTitle: bookMetadata.title,
+    bookAuthor: bookMetadata.author,
+    bookCoverUrl: bookMetadata.coverUrl || null,
+    completedAt: new Date(),
+  });
+
+  const clubContext = clubId ? ` (club: ${clubId})` : '';
+  console.log(`[Reader API] Книга "${bookMetadata.title}" добавлена в историю пользователя ${userId}${clubContext}`);
+
+  // Записываем событие book_complete в аналитику
+  try {
+    const [analyticsEvent] = await db.insert(analyticsEvents).values({
+      eventType: 'book_complete',
+      userId,
+      bookId,
+      progress: 100,
+      clubId: clubId || null,
+    }).returning();
+    console.log(`[Reader API] Analytics event recorded: ${analyticsEvent.id}`);
+  } catch (analyticsError) {
+    console.error('[Reader API] Error recording analytics event:', analyticsError);
+  }
+}
+
+/**
  * PUT /api/v1/books/:id/progress
  * Обновление прогресса чтения (debounced на клиенте)
  */
@@ -133,69 +216,7 @@ router.put("/:id/progress", async (req: Request, res: Response) => {
     // Если прогресс достиг 100%, добавляем в историю
     if (progress === 100) {
       try {
-        // Проверяем, не добавлена ли уже книга в историю
-        const existingHistory = await db
-          .select()
-          .from(readingHistory)
-          .where(and(
-            eq(readingHistory.userId, userId),
-            eq(readingHistory.bookId, bookId)
-          ))
-          .limit(1);
-
-        if (existingHistory.length === 0) {
-          // Пытаемся получить данные из books (unified table)
-          let bookData = await db
-            .select({
-              title: books.title,
-              author: books.author,
-              coverUrl: books.coverUrl,
-            })
-            .from(books)
-            .where(eq(books.id, bookId))
-            .limit(1);
-
-          // Если не найдено в books, пробуем personal_books
-          if (bookData.length === 0) {
-            bookData = await db
-              .select({
-                title: personalBooks.title,
-                author: personalBooks.author,
-                coverUrl: personalBooks.coverUrl,
-              })
-              .from(personalBooks)
-              .where(eq(personalBooks.id, bookId))
-              .limit(1);
-          }
-
-          if (bookData.length > 0) {
-            // Добавляем в историю
-            await db.insert(readingHistory).values({
-              userId,
-              bookId,
-              clubId: clubId || null,
-              bookTitle: bookData[0].title,
-              bookAuthor: bookData[0].author,
-              bookCoverUrl: bookData[0].coverUrl || null,
-              completedAt: new Date(),
-            });
-            const clubContext = clubId ? ` (club: ${clubId})` : '';
-            console.log(`[Reader API] Книга "${bookData[0].title}" добавлена в историю пользователя ${userId}${clubContext}`);
-            // Записываем событие book_complete в аналитику
-            try {
-              const [analyticsEvent] = await db.insert(analyticsEvents).values({
-                eventType: 'book_complete',
-                userId,
-                bookId,
-                progress: 100,
-                clubId: clubId || null,
-              }).returning();
-              console.log(`[Reader API] Analytics event recorded: ${analyticsEvent.id}`);
-            } catch (analyticsError) {
-              console.error('[Reader API] Error recording analytics event:', analyticsError);
-            }
-          }
-        }
+        await addBookToHistory(userId, bookId, clubId || null);
       } catch (historyError) {
         console.error("[Reader API] Error adding to history:", historyError);
         // Не прерываем основной запрос из-за ошибки истории

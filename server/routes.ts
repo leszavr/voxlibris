@@ -42,6 +42,50 @@ async function findInvitationByToken(token: string) {
   return undefined;
 }
 
+// Helper function to handle reading history when progress reaches 100%
+async function handleCompletedBook(userId: string, bookId: string, clubId?: string) {
+  try {
+    // Проверяем, не добавлена ли уже книга в историю
+    const existingHistory = await storage.getReadingHistory(userId);
+    const alreadyInHistory = existingHistory.some((h: any) => h.bookId === bookId);
+
+    if (alreadyInHistory) {
+      return;
+    }
+
+    // Пытаемся получить данные из books (unified table)
+    let bookData = await storage.getBook(bookId);
+    
+    // Если не найдено в books, пробуем personal_books
+    if (!bookData) {
+      const personalBook = await storage.getPersonalBook(bookId);
+      if (personalBook) {
+        bookData = {
+          id: personalBook.id,
+          title: personalBook.title,
+          author: personalBook.author,
+          coverUrl: personalBook.coverUrl
+        } as any;
+      }
+    }
+    
+    if (bookData) {
+      await storage.addCompletedToHistory(
+        userId,
+        bookId,
+        bookData.title,
+        bookData.author,
+        bookData.coverUrl || undefined,
+        clubId || undefined
+      );
+      const clubContext = clubId ? ` (club: ${clubId})` : '';
+      console.log(`[Progress] Книга "${bookData.title}" добавлена в историю${clubContext}`);
+    }
+  } catch (historyError) {
+    console.error('[Progress] Ошибка добавления в историю:', historyError);
+  }
+}
+
 // Улучшенный fileFilter с проверкой magic numbers
 const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
   const allowedMimeTypes = ['application/epub+zip', 'application/x-fictionbook+xml'];
@@ -1355,44 +1399,7 @@ export async function registerRoutes(
 
       // Если прогресс достиг 100%, добавляем в историю
       if (progress === 100) {
-        try {
-          // Проверяем, не добавлена ли уже книга в историю
-          const existingHistory = await storage.getReadingHistory(userId);
-          const alreadyInHistory = existingHistory.some((h: any) => h.bookId === bookId);
-
-          if (!alreadyInHistory) {
-            // Пытаемся получить данные из books (unified table)
-            let bookData = await storage.getBook(bookId);
-            
-            // Если не найдено в books, пробуем personal_books
-            if (!bookData) {
-              const personalBook = await storage.getPersonalBook(bookId);
-              if (personalBook) {
-                bookData = {
-                  id: personalBook.id,
-                  title: personalBook.title,
-                  author: personalBook.author,
-                  coverUrl: personalBook.coverUrl
-                } as any;
-              }
-            }
-            
-            if (bookData) {
-              await storage.addCompletedToHistory(
-                userId,
-                bookId,
-                bookData.title,
-                bookData.author,
-                bookData.coverUrl || undefined,
-                clubId || undefined
-              );
-              const clubContext = clubId ? ` (club: ${clubId})` : '';
-              console.log(`[Progress] Книга "${bookData.title}" добавлена в историю${clubContext}`);
-            }
-          }
-        } catch (historyError) {
-          console.error('[Progress] Ошибка добавления в историю:', historyError);
-        }
+        await handleCompletedBook(userId, bookId, clubId);
       }
 
       res.json({
