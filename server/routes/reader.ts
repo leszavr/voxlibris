@@ -10,13 +10,13 @@ import {
   personalBooks,
   clubBooks,
   clubMembers,
+  analyticsEvents,
 } from "../../shared/schema.js";
 import { eq, and, desc } from "drizzle-orm";
 import { sanitizeBookContent } from "../content-sanitizer.js";
 import {
   generateShortLivedToken,
 } from "../encryption.js";
-import { analyticsEvents } from "../../shared/schema.js";
 
 const router = express.Router();
 
