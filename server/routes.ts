@@ -1361,8 +1361,21 @@ export async function registerRoutes(
           const alreadyInHistory = existingHistory.some((h: any) => h.bookId === bookId);
 
           if (!alreadyInHistory) {
-            // Получаем данные о книге из personal_books
-            const bookData = await storage.getPersonalBook(bookId);
+            // Пытаемся получить данные из books (unified table)
+            let bookData = await storage.getBook(bookId);
+            
+            // Если не найдено в books, пробуем personal_books
+            if (!bookData) {
+              const personalBook = await storage.getPersonalBook(bookId);
+              if (personalBook) {
+                bookData = {
+                  id: personalBook.id,
+                  title: personalBook.title,
+                  author: personalBook.author,
+                  coverUrl: personalBook.coverUrl
+                } as any;
+              }
+            }
             
             if (bookData) {
               await storage.addCompletedToHistory(
@@ -1370,9 +1383,11 @@ export async function registerRoutes(
                 bookId,
                 bookData.title,
                 bookData.author,
-                bookData.coverUrl || undefined
+                bookData.coverUrl || undefined,
+                clubId || undefined
               );
-              console.log(`[Progress] Книга "${bookData.title}" добавлена в историю`);
+              const clubContext = clubId ? ` (club: ${clubId})` : '';
+              console.log(`[Progress] Книга "${bookData.title}" добавлена в историю${clubContext}`);
             }
           }
         } catch (historyError) {

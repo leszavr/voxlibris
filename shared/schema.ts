@@ -315,7 +315,8 @@ export const readingProgress = pgTable("reading_progress", {
 export const readingHistory = pgTable("reading_history", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  bookId: varchar("book_id").notNull(), // personal_books.id
+  bookId: varchar("book_id").notNull().references(() => books.id, { onDelete: "cascade" }), // books.id (unified table)
+  clubId: varchar("club_id").references(() => clubs.id, { onDelete: "set null" }), // Optional club context
   bookTitle: text("book_title").notNull(), // Статичная копия для истории
   bookAuthor: text("book_author").notNull(), // Статичная копия для истории
   bookCoverUrl: text("book_cover_url"), // Статичная копия обложки

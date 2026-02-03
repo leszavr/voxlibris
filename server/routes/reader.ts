@@ -10,13 +10,13 @@ import {
   personalBooks,
   clubBooks,
   clubMembers,
+  analyticsEvents,
 } from "../../shared/schema.js";
 import { eq, and, desc } from "drizzle-orm";
 import { sanitizeBookContent } from "../content-sanitizer.js";
 import {
   generateShortLivedToken,
 } from "../encryption.js";
-import { analyticsEvents } from "../../shared/schema.js";
 
 const router = express.Router();
 
@@ -144,29 +144,43 @@ router.put("/:id/progress", async (req: Request, res: Response) => {
           .limit(1);
 
         if (existingHistory.length === 0) {
-          // Получаем данные о книге из personal_books
-          const bookData = await db
+          // Пытаемся получить данные из books (unified table)
+          let bookData = await db
             .select({
-              title: personalBooks.title,
-              author: personalBooks.author,
-              coverUrl: personalBooks.coverUrl,
+              title: books.title,
+              author: books.author,
+              coverUrl: books.coverUrl,
             })
-            .from(personalBooks)
-            .where(eq(personalBooks.id, bookId))
+            .from(books)
+            .where(eq(books.id, bookId))
             .limit(1);
+
+          // Если не найдено в books, пробуем personal_books
+          if (bookData.length === 0) {
+            bookData = await db
+              .select({
+                title: personalBooks.title,
+                author: personalBooks.author,
+                coverUrl: personalBooks.coverUrl,
+              })
+              .from(personalBooks)
+              .where(eq(personalBooks.id, bookId))
+              .limit(1);
+          }
 
           if (bookData.length > 0) {
             // Добавляем в историю
             await db.insert(readingHistory).values({
               userId,
               bookId,
+              clubId: clubId || null,
               bookTitle: bookData[0].title,
               bookAuthor: bookData[0].author,
               bookCoverUrl: bookData[0].coverUrl || null,
               completedAt: new Date(),
             });
-            console.log(`[Reader API] Книга "${bookData[0].title}" добавлена в историю пользователя ${userId}`);
-
+            const clubContext = clubId ? ` (club: ${clubId})` : '';
+            console.log(`[Reader API] Книга "${bookData[0].title}" добавлена в историю пользователя ${userId}${clubContext}`);
             // Записываем событие book_complete в аналитику
             try {
               const [analyticsEvent] = await db.insert(analyticsEvents).values({

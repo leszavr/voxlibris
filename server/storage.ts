@@ -158,7 +158,7 @@ export interface IStorage {
   updateReadingProgress(progress: InsertReadingProgress & { userId: string }): Promise<ReadingProgress>;
   getUserReadingProgress(userId: string, bookId: string): Promise<ReadingProgress | undefined>;
   getClubReadingProgress(clubId: string): Promise<ReadingProgress[]>;
-  addCompletedToHistory(userId: string, bookId: string, bookTitle: string, bookAuthor: string, bookCoverUrl?: string): Promise<void>;
+  addCompletedToHistory(userId: string, bookId: string, bookTitle: string, bookAuthor: string, bookCoverUrl?: string, clubId?: string): Promise<void>;
   getReadingHistory(userId: string): Promise<ReadingHistory[]>;
   clearReadingHistory(userId: string): Promise<void>;
 
@@ -570,7 +570,7 @@ export class MemStorage implements IStorage {
     throw new Error("MemStorage does not support reading history - use PostgreSQL");
   }
 
-  async addCompletedToHistory(userId: string, bookId: string, bookTitle: string, bookAuthor: string, bookCoverUrl?: string): Promise<void> {
+  async addCompletedToHistory(userId: string, bookId: string, bookTitle: string, bookAuthor: string, bookCoverUrl?: string, clubId?: string): Promise<void> {
     throw new Error("MemStorage does not support reading history - use PostgreSQL");
   }
 
@@ -2185,7 +2185,7 @@ export class PostgreSQLStorage implements IStorage {
 
 
   // Reading History methods
-  async addCompletedToHistory(userId: string, bookId: string, bookTitle: string, bookAuthor: string, bookCoverUrl?: string): Promise<void> {
+  async addCompletedToHistory(userId: string, bookId: string, bookTitle: string, bookAuthor: string, bookCoverUrl?: string, clubId?: string): Promise<void> {
     // Проверяем, что книга еще не в истории (избегаем дубликатов)
     const existing = await this.db
       .select()
@@ -2207,10 +2207,12 @@ export class PostgreSQLStorage implements IStorage {
       bookId,
       bookTitle,
       bookAuthor,
-      bookCoverUrl
+      bookCoverUrl,
+      clubId: clubId || null
     });
 
-    console.log(`[Storage] Книга ${bookTitle} добавлена в историю пользователя ${userId}`);
+    const clubContext = clubId ? ` (club: ${clubId})` : '';
+    console.log(`[Storage] Книга ${bookTitle} добавлена в историю пользователя ${userId}${clubContext}`);
   }
 
   async getReadingHistory(userId: string): Promise<ReadingHistory[]> {

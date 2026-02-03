@@ -22,16 +22,19 @@ declare global {
  */
 export function jwtAuth(req: Request, res: Response, next: NextFunction) {
   try {
-    // Пытаемся извлечь токен из заголовка Authorization
-    const authHeader = req.headers.authorization;
-    let token = authService.extractTokenFromHeader(authHeader);
+    let token: string | null = null;
     
-    // Если нет в header, проверяем cookies
-    if (!token && req.cookies?.accessToken) {
+    // Приоритет: сначала httpOnly cookies (безопасно), затем Authorization header (fallback)
+    if (req.cookies?.accessToken) {
       token = req.cookies.accessToken;
       console.log('[jwtAuth] Token found in cookies');
-    } else if (token) {
-      console.log('[jwtAuth] Token found in Authorization header');
+    } else {
+      // Fallback на Authorization header для обратной совместимости
+      const authHeader = req.headers.authorization;
+      token = authService.extractTokenFromHeader(authHeader);
+      if (token) {
+        console.log('[jwtAuth] Token found in Authorization header');
+      }
     }
 
     if (!token) {
