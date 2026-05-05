@@ -18,6 +18,7 @@ import { jwtAuth, requireActiveUser } from "./jwt-middleware.js";
 import { logger } from "./lib/logger.js";
 import { getPublicBaseUrl } from "./lib/public-base-url.js";
 import { storeOptimizedImageIfNeeded } from "./lib/uploaded-image-storage.js";
+import { activityService } from "./services/activity-service.js";
 import {
   clearStudioStreamClosureIntent,
   setStudioStreamClosureIntent,
@@ -135,7 +136,9 @@ function validateStoragePath(path: string): { valid: boolean; normalizedPath?: s
     /^covers\/[a-zA-Z0-9-]+\.(jpg|jpeg|png|webp)$/,
     /^covers\/(club|personal)\/[a-fA-F0-9-]+\/[a-fA-F0-9-]+-cover\.(jpg|jpeg|png|webp)$/,
     /^books\/[a-fA-F0-9-]+\/content\.(epub|fb2|html)$/,
-    /^avatars\/[a-zA-Z0-9-]+\.(jpg|jpeg|png|webp)$/
+    /^avatars\/[a-zA-Z0-9-]+\.(jpg|jpeg|png|webp)$/,
+    /^avatars\/[a-fA-F0-9-]+\/[a-zA-Z0-9_-]+-[a-fA-F0-9-]+\.(jpg|jpeg|png|webp)$/,
+    /^profiles\/[a-fA-F0-9-]+\/[a-zA-Z0-9_-]+-[a-fA-F0-9-]+\.(jpg|jpeg|png|webp)$/,
   ];
 
   const isAllowed = allowedPatterns.some(pattern => {
@@ -318,7 +321,7 @@ export async function registerRoutes(
       if (inviter) {
         const baseUrl = await getPublicBaseUrl();
         await emailService.sendInvitationAccepted({
-          email: inviter.username, // assuming username is email
+          email: inviter.email,
           clubName: club.title,
           memberName: req.user.username,
           baseUrl,
@@ -326,6 +329,18 @@ export async function registerRoutes(
       }
 
       logger.debug(`[Clubs] User ${req.user.username} accepted invitation to club "${club.title}"`);
+
+      // Событие ленты: пользователь вступил в клуб
+      activityService.emit({
+        actorId: req.user.userId,
+        eventType: 'joined_club',
+        targetType: 'club',
+        targetId: club.id,
+        metadata: {
+          clubId: club.id,
+          clubName: club.title,
+        },
+      }).catch((err) => logger.warn('[activity] joined_club emit failed', err));
 
       res.json({
         message: 'Successfully joined the club',
@@ -1238,23 +1253,7 @@ export async function registerRoutes(
 
   // ===== USER PROFILES API =====
 
-  // Search users (для приглашений в клубы)
-  app.get("/api/users/search", jwtAuth, async (req: Request, res: Response) => {
-    try {
-      const { q } = req.query;
-      
-      if (!q || typeof q !== 'string' || q.length < 2) {
-        return res.json([]);
-      }
-
-      const results = await storage.searchUsers(q, 20);
-
-      res.json(results);
-    } catch (error) {
-      console.error("Search users error:", error);
-      res.status(500).json({ message: "Внутренняя ошибка сервера" });
-    }
-  });
+  // Search users — делегировано server/routes/users.ts (optionalJwtAuth, FTS, тип all|readers|listeners)
 
   // Get current user profile
   app.get("/api/users/current/profile", jwtAuth, async (req: Request, res: Response) => {

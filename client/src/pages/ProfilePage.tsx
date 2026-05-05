@@ -1,6 +1,6 @@
 import type { ClubWithDetails } from "@shared/schema";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, BookOpen, Edit, Loader2, TrendingUp, Users, Target, Shield, KeyRound } from "lucide-react";
+import { ArrowLeft, BookOpen, Edit, Loader2, TrendingUp, Users, Target, Shield, KeyRound, MessageCircle } from "lucide-react";
 import * as React from "react";
 import { useLocation, useParams } from "wouter";
 import { MainLayout } from "@/components/layout/MainLayout";
@@ -25,6 +25,10 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { authFetch } from "@/lib/queryClient";
+import { FollowButton } from "@/components/social/FollowButton";
+import { SocialStats } from "@/components/social/SocialStats";
+import { FollowersList } from "@/components/social/FollowersList";
+import { PrivacySettingsPanel } from "@/components/social/PrivacySettingsPanel";
 
 // Helper function для рендеринга контента клубов
 function renderClubsContent(
@@ -232,6 +236,8 @@ export default function ProfilePage() {
   const [currentPassword, setCurrentPassword] = React.useState("");
   const [newPassword, setNewPassword] = React.useState("");
   const [confirmPassword, setConfirmPassword] = React.useState("");
+  const [followersListMode, setFollowersListMode] = React.useState<'followers' | 'following'>('followers');
+  const [followersListOpen, setFollowersListOpen] = React.useState(false);
 
   // Определяем isOwnProfile здесь, перед использованием
   const currentUserId = user?.id || null;
@@ -459,6 +465,41 @@ export default function ProfilePage() {
                 </Button>
               </EditProfileDialog>
             )}
+            {!isOwnProfile && currentUserId && (
+              <div className="flex gap-2">
+                <FollowButton
+                  targetUserId={profileId}
+                  currentUserId={currentUserId}
+                  className="bg-white/90 backdrop-blur-sm hover:bg-white text-primary"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="bg-white/90 backdrop-blur-sm hover:bg-white text-primary"
+                  onClick={async () => {
+                    try {
+                      const res = await authFetch('/api/dm/conversations', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ recipientId: profileId }),
+                      });
+                      const data = await res.json();
+                      const convId = data.conversation?.id;
+                      if (convId) {
+                        setLocation(`/dashboard?tab=messages&conv=${convId}`);
+                      } else if (!res.ok) {
+                        toast({ title: 'Нельзя написать этому пользователю', variant: 'destructive' });
+                      }
+                    } catch {
+                      toast({ title: 'Не удалось открыть диалог', variant: 'destructive' });
+                    }
+                  }}
+                >
+                  <MessageCircle className="h-4 w-4 mr-1" />
+                  Написать
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -475,6 +516,20 @@ export default function ProfilePage() {
               ))}
             </div>
           )}
+
+          {/* Социальный граф: счётчики подписок */}
+          <SocialStats
+            userId={profileId}
+            onFollowersClick={() => { setFollowersListMode('followers'); setFollowersListOpen(true); }}
+            onFollowingClick={() => { setFollowersListMode('following'); setFollowersListOpen(true); }}
+          />
+          <FollowersList
+            open={followersListOpen}
+            onOpenChange={setFollowersListOpen}
+            userId={profileId}
+            currentUserId={currentUserId ?? undefined}
+            mode={followersListMode}
+          />
 
           {/* Статистика */}
           <div className="grid grid-cols-1 gap-3 rounded-xl border bg-card p-4 sm:grid-cols-3 sm:gap-4 sm:p-6">
@@ -501,7 +556,7 @@ export default function ProfilePage() {
 
         {/* Табы с контентом */}
         <Tabs defaultValue="reading" className="space-y-6">
-          <TabsList className={`grid h-auto w-full gap-1 rounded-xl p-1 ${isOwnProfile ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'}`}>
+          <TabsList className={`grid h-auto w-full gap-1 rounded-xl p-1 ${isOwnProfile ? 'grid-cols-3 sm:grid-cols-6' : 'grid-cols-3'}`}>
             <TabsTrigger value="reading" className="flex min-h-10 items-center gap-2 px-2 text-xs sm:text-sm">
               <BookOpen className="h-4 w-4" />
               <span>Чтение</span>
@@ -518,6 +573,12 @@ export default function ProfilePage() {
               <TabsTrigger value="security" className="flex min-h-10 items-center gap-2 px-2 text-xs sm:text-sm">
                 <Shield className="h-4 w-4" />
                 <span>Безопасность</span>
+              </TabsTrigger>
+            )}
+            {isOwnProfile && (
+              <TabsTrigger value="privacy" className="flex min-h-10 items-center gap-2 px-2 text-xs sm:text-sm">
+                <KeyRound className="h-4 w-4" />
+                <span>Приватность</span>
               </TabsTrigger>
             )}
           </TabsList>
@@ -774,6 +835,22 @@ export default function ProfilePage() {
                       {changePasswordMutation.isPending ? 'Сохранение...' : 'Сменить пароль'}
                     </Button>
                   </form>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
+
+          {isOwnProfile && (
+            <TabsContent value="privacy">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <KeyRound className="h-5 w-5" />
+                    Настройки приватности
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <PrivacySettingsPanel />
                 </CardContent>
               </Card>
             </TabsContent>

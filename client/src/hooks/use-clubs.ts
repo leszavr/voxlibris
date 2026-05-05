@@ -54,6 +54,8 @@ export interface UpdateClubRequest {
 export interface ClubMemberWithUser {
   id: string;
   username: string;
+  displayName?: string | null;
+  avatar?: string | null;
   role: ClubMemberRole;
   joinedAt: Date;
   status: string;

@@ -84,6 +84,20 @@ export function EditProfileDialog({ profile, children, onSave, isLoading }: Edit
     return () => subscription.unsubscribe();
   }, [form]);
 
+  // Синхронизируем форму когда profile загрузился/обновился извне (RHF defaultValues статичны)
+  React.useEffect(() => {
+    form.reset({
+      displayName: profile.displayName || "",
+      avatar: profile.avatar || "",
+      coverImage: profile.coverImage || "",
+      bio: profile.bio || "",
+      favoriteGenres: profile.favoriteGenres || "",
+      isReader: profile.isReader,
+    });
+    setAvatarPreview(profile.avatar || "");
+    setCoverPreview(profile.coverImage || "");
+  }, [profile]);
+
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;

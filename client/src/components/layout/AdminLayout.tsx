@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
@@ -104,6 +104,7 @@ function AdminSidebar({ mobile = false }: AdminSidebarProps) {
       <div className="border-t px-4 py-4">
         <div className="flex items-center gap-3 mb-3">
           <Avatar className="h-8 w-8">
+            {user?.avatar && <AvatarImage src={user.avatar} alt={user.username} />}
             <AvatarFallback className="bg-blue-100 text-blue-700 text-sm font-medium">
               {user?.username.charAt(0).toUpperCase()}
             </AvatarFallback>
@@ -201,6 +202,7 @@ export function AdminLayout({ children }: Readonly<AdminLayoutProps>) {
           </div>
           
           <Avatar className="h-8 w-8">
+            {user?.avatar && <AvatarImage src={user.avatar} alt={user.username} />}
             <AvatarFallback className="bg-blue-100 text-blue-700 text-sm">
               {user?.username.charAt(0).toUpperCase()}
             </AvatarFallback>

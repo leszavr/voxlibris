@@ -3,6 +3,7 @@ import { storage, repositories } from '../repositories/index.js';
 import { logger } from '../lib/logger.js';
 import { setStudioStreamClosureIntent } from '../lib/studio-stream-intent-store.js';
 import { sessionAnalyticsService } from '../services/session-analytics-service.js';
+import { activityService } from '../services/activity-service.js';
 
 const router = Router();
 const readingSessionStatuses = ['active', 'paused', 'completed', 'cancelled'] as const;
@@ -79,6 +80,22 @@ router.post('/', async (req: Request, res: Response) => {
       sessionType: 'reader_club',
       isOpenForListeners: true,
     });
+
+    // Событие ленты: чтец начал сессию
+    activityService.emit({
+      actorId: userId,
+      eventType: 'session_started',
+      targetType: 'session',
+      targetId: session.id,
+      metadata: {
+        sessionId: session.id,
+        bookId,
+        clubId,
+        chapter,
+        sessionTitle: session.title ?? book.title,
+        bookTitle: book.title,
+      },
+    }).catch((err) => logger.warn('[activity] session_started emit failed', err));
 
     res.json({
       success: true,
@@ -260,6 +277,23 @@ router.put('/:sessionId/status', async (req: Request, res: Response) => {
     }
 
     const updatedSession = await storage.readingSessions.updateSessionStatus(sessionId, status);
+
+    // Событие ленты при завершении сессии
+    if (status === 'completed' || status === 'cancelled') {
+      activityService.emit({
+        actorId: userId,
+        eventType: 'session_ended',
+        targetType: 'session',
+        targetId: sessionId,
+        metadata: {
+          sessionId,
+          bookId: session.bookId,
+          clubId: session.clubId,
+          sessionTitle: session.title,
+          status,
+        },
+      }).catch((err) => logger.warn('[activity] session_ended emit failed', err));
+    }
 
     res.json({
       success: true,
@@ -506,6 +540,22 @@ router.delete('/:sessionId', async (req: Request, res: Response) => {
       success: false,
       error: 'Failed to end reading session',
     });
+  }
+});
+
+/**
+ * GET /api/reading-sessions/:sessionId/listeners
+ * Список активных слушателей сессии (аватары для UI плеера)
+ */
+router.get('/:sessionId/listeners', async (req: Request, res: Response) => {
+  try {
+    const { sessionId } = req.params;
+    const listeners = await storage.readingSessions.getSessionListeners(sessionId);
+    return res.json({ listeners });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error(`Error getting session listeners: ${errorMessage}`);
+    return res.status(500).json({ error: 'Failed to get session listeners' });
   }
 });
 
