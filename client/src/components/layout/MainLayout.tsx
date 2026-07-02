@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { FeedbackModal } from "@/components/ui/feedback-modal";
+import { PolicyModal } from "@/components/layout/PolicyModal";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useState, useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -262,6 +263,8 @@ export function MainLayout({ children }: { readonly children: React.ReactNode })
   const [showComingSoon, setShowComingSoon] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [showPolicy, setShowPolicy] = useState(false);
+  const [currentPolicy, setCurrentPolicy] = useState<"rules" | "privacy" | "terms">("rules");
   const [location, setLocation] = useLocation();
   const { user, isAuthenticated, logout, refetchUser } = useAuth();
   const queryClient = useQueryClient();
@@ -404,9 +407,14 @@ export function MainLayout({ children }: { readonly children: React.ReactNode })
     };
   }, []);
 
-  const handlePlaceholderLink = (e: React.MouseEvent<HTMLAnchorElement> | React.MouseEvent<HTMLButtonElement>) => {
+  const handlePlaceholderLink = (e: React.MouseEvent<HTMLAnchorElement> | React.MouseEvent<HTMLButtonElement>, policyType?: "rules" | "privacy" | "terms") => {
     e.preventDefault();
-    setShowComingSoon(true);
+    if (policyType) {
+      setCurrentPolicy(policyType);
+      setShowPolicy(true);
+    } else {
+      setShowComingSoon(true);
+    }
   };
 
   const handleSearchSelect = (path: string, isFuture: boolean = false) => {
@@ -677,7 +685,7 @@ export function MainLayout({ children }: { readonly children: React.ReactNode })
           <div>
             <h4 className="font-semibold text-foreground mb-4">Сообщество</h4>
             <ul className="space-y-2 text-sm">
-              <li><button type="button" onClick={handlePlaceholderLink} className="hover:text-primary cursor-pointer">Правила</button></li>
+              <li><button type="button" onClick={(e) => handlePlaceholderLink(e, "rules")} className="hover:text-primary cursor-pointer">Правила</button></li>
               <li><Link href="/become-reader" className="hover:text-primary">Стать чтецом</Link></li>
               <li><button type="button" onClick={() => setShowFeedback(true)} className="hover:text-primary cursor-pointer">Обратная связь</button></li>
             </ul>
@@ -685,8 +693,8 @@ export function MainLayout({ children }: { readonly children: React.ReactNode })
           <div>
             <h4 className="font-semibold text-foreground mb-4">Легал</h4>
             <ul className="space-y-2 text-sm">
-              <li><button type="button" onClick={handlePlaceholderLink} className="hover:text-primary cursor-pointer">Приватность</button></li>
-              <li><button type="button" onClick={handlePlaceholderLink} className="hover:text-primary cursor-pointer">Условия</button></li>
+              <li><button type="button" onClick={(e) => handlePlaceholderLink(e, "privacy")} className="hover:text-primary cursor-pointer">Приватность</button></li>
+              <li><button type="button" onClick={(e) => handlePlaceholderLink(e, "terms")} className="hover:text-primary cursor-pointer">Условия</button></li>
             </ul>
           </div>
         </div>
@@ -748,6 +756,12 @@ export function MainLayout({ children }: { readonly children: React.ReactNode })
           </p>
         </DialogContent>
       </Dialog>
+
+      <PolicyModal
+        isOpen={showPolicy}
+        onClose={() => setShowPolicy(false)}
+        policyType={currentPolicy}
+      />
 
       <FeedbackModal 
         isOpen={showFeedback} 
