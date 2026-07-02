@@ -19,7 +19,7 @@ before(async () => {
   apiAvailable = await isApiAvailable();
 });
 
-function skipIfApiUnavailable(t: { skip: (message?: string) => void }): boolean {
+function skipIfApiUnavailable(_t: { skip: (message?: string) => void }): boolean {
   if (!apiAvailable) {
     assert.fail(`API server is not available at ${TEST_API_BASE_URL}`);
   }
@@ -27,7 +27,7 @@ function skipIfApiUnavailable(t: { skip: (message?: string) => void }): boolean 
   return false;
 }
 
-function skipIfNoAdminToken(t: { skip: (message?: string) => void }): boolean {
+function skipIfNoAdminToken(_t: { skip: (message?: string) => void }): boolean {
   if (!adminToken) {
     return true;
   }
@@ -35,7 +35,7 @@ function skipIfNoAdminToken(t: { skip: (message?: string) => void }): boolean {
   return false;
 }
 
-function skipIfNoOwnerContext(t: { skip: (message?: string) => void }): boolean {
+function skipIfNoOwnerContext(_t: { skip: (message?: string) => void }): boolean {
   if (!ownerToken || !readerClubId) {
     return true;
   }
@@ -43,7 +43,7 @@ function skipIfNoOwnerContext(t: { skip: (message?: string) => void }): boolean 
   return false;
 }
 
-function skipIfNoGrantContext(t: { skip: (message?: string) => void }): boolean {
+function skipIfNoGrantContext(_t: { skip: (message?: string) => void }): boolean {
   if (!adminToken || !paidReaderProductId || !grantUserId) {
     return true;
   }
@@ -51,7 +51,7 @@ function skipIfNoGrantContext(t: { skip: (message?: string) => void }): boolean 
   return false;
 }
 
-function skipIfNoStandardClubContext(t: { skip: (message?: string) => void }): boolean {
+function skipIfNoStandardClubContext(_t: { skip: (message?: string) => void }): boolean {
   if (!standardOwnerToken || !standardMemberToken || !standardInviteToken || !paidStandardInviteToken) {
     return true;
   }
