@@ -339,7 +339,7 @@ export default function AdminDashboard() {
               <Link href="/admin/reports">
                 <Button variant="outline" className="flex items-center gap-2 w-full">
                   <CheckCircle className="h-4 w-4" />
-                  Проверить отчеты
+                  Проверить жалобы
                 </Button>
               </Link>
             </div>

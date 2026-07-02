@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { EmailVerificationModal } from "@/components/ui/email-verification-modal";
 import { UsernameFixBanner } from "@/components/ui/username-fix-banner";
+import { MaintenanceOverlay } from "@/components/MaintenanceOverlay";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import Home from "@/pages/home";
 import { queryClient } from "./lib/queryClient";
@@ -39,6 +40,7 @@ const AdminSettings = lazy(() => import("@/pages/admin/settings"));
 const AdminPaymentProviders = lazy(() => import("@/pages/admin/payment-providers"));
 const AdminTariffConstructor = lazy(() => import("@/pages/admin/tariff-constructor"));
 const AdminSubscriptions = lazy(() => import("@/pages/admin/subscriptions"));
+const AdminCommerceAudit = lazy(() => import("@/pages/admin/commerce-audit"));
 const Readers = lazy(() => import("@/pages/readers"));
 const Library = lazy(() => import("@/pages/library"));
 const Pricing = lazy(() => import("@/pages/pricing"));
@@ -145,6 +147,7 @@ function Router() {
       <Route path="/admin/payment-providers" component={AdminPaymentProviders} />
       <Route path="/admin/tariff-constructor" component={AdminTariffConstructor} />
       <Route path="/admin/subscriptions" component={AdminSubscriptions} />
+      <Route path="/admin/commerce-audit" component={AdminCommerceAudit} />
       <Route path="/admin/reader-club-tariffs" component={AdminTariffConstructor} />
       <Route path="/admin/settings" component={AdminSettings} />
 
@@ -215,6 +218,7 @@ function App() {
             </Suspense>
             <EmailVerificationModal isOpen={showEmailVerificationModal} onClose={handleCloseEmailVerificationModal} />
             <UsernameFixBanner />
+            <MaintenanceOverlay />
           </TooltipProvider>
         </ErrorBoundary>
       </AuthProvider>

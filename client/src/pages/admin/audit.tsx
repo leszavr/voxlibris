@@ -126,7 +126,7 @@ export default function AuditPage() {
   });
 
   // Загрузка статистики
-  const { data: statsData } = useQuery({
+  const { data: statsData, refetch: refetchStats } = useQuery({
     queryKey: ['admin-audit-stats'],
     queryFn: async () => {
       return apiRequest<{
@@ -181,11 +181,41 @@ export default function AuditPage() {
   const stats = statsData?.data;
   const securitySettings = securityData?.settings;
 
+  const handleRefresh = () => {
+    void Promise.all([refetchLogs(), refetchStats(), refetchSecurity()]);
+  };
+
+  const escapeCsvValue = (value: unknown) => {
+    const stringValue = value == null ? '' : String(value);
+    return `"${stringValue.replaceAll('"', '""')}"`;
+  };
+
   const handleExportLogs = () => {
-    toast({
-      title: "Экспорт",
-      description: "Функция экспорта будет добавлена в следующем обновлении",
-    });
+    if (logs.length === 0) {
+      toast({ title: "Экспорт", description: "Нет записей для экспорта" });
+      return;
+    }
+
+    const rows = logs.map((log) => [
+      log.createdAt,
+      log.adminUsername,
+      log.actionType,
+      log.targetType,
+      log.targetId,
+      log.reason ?? '',
+      log.ipAddress ?? '',
+    ]);
+    const csv = [
+      ['Дата', 'Администратор', 'Действие', 'Тип объекта', 'ID объекта', 'Причина', 'IP'],
+      ...rows,
+    ].map((row) => row.map(escapeCsvValue).join(',')).join('\n');
+    const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `audit-logs-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   const formatDate = (dateString: string) => {
@@ -219,7 +249,7 @@ export default function AuditPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => refetchLogs()} disabled={logsLoading}>
+            <Button variant="outline" onClick={handleRefresh} disabled={logsLoading}>
               <RefreshCw className={`h-4 w-4 ${logsLoading ? 'animate-spin' : ''}`} />
               Обновить
             </Button>

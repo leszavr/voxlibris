@@ -29,22 +29,17 @@ type HealthStatus = 'healthy' | 'warning' | 'error';
 
 interface SystemSettings {
   general: {
-    platform_name: string;
-    platform_description: string;
-    max_clubs_per_user: number;
-    max_books_per_club: number;
-    max_participants_per_club: number;
-    maintenance_mode: boolean;
-    registration_enabled: boolean;
+    registrationEnabled: boolean;
+    maintenanceMode: boolean;
+    maintenanceReason: string;
+    maintenanceUntil: string;
+    maintenanceMessage: string;
   };
   security: {
     require_email_verification: boolean;
     max_login_attempts: number;
-    session_timeout_hours: number;
     password_min_length: number;
     require_2fa_for_admins: boolean;
-    allowed_file_types: string[];
-    max_file_size_mb: number;
   };
   notifications: {
     email_notifications: boolean;
@@ -93,6 +88,10 @@ interface PlatformSettingsResponse {
   };
 }
 
+interface GeneralSettingsResponse {
+  settings: SystemSettings['general'];
+}
+
 interface DmRetentionAdminSettings {
   adminMaxDays: number;
   hardDeleteGraceDays: number;
@@ -107,8 +106,41 @@ interface DmRetentionCleanupStats {
   hardDeleteGraceDays: number;
 }
 
+type AdminSettingsApiValue = { value: unknown };
+type AdminSettingsApiResponse = Record<string, Record<string, AdminSettingsApiValue>>;
+
+function readSetting<T>(items: Record<string, AdminSettingsApiValue> | undefined, key: string, fallback: T): T {
+  const value = items?.[key]?.value;
+  return value === undefined ? fallback : value as T;
+}
+
 async function fetchSystemSettings(): Promise<SystemSettings> {
-  return apiRequest<SystemSettings>('/api/v1/admin/settings');
+  const response = await apiRequest<AdminSettingsApiResponse>('/api/v1/admin/settings');
+  const security = response.security;
+
+  return {
+    ...response,
+    general: response.general as unknown as SystemSettings['general'],
+    security: {
+      require_email_verification: readSetting(security, 'security.require_email_verification', true),
+      max_login_attempts: readSetting(security, 'security.max_login_attempts', 5),
+      password_min_length: readSetting(security, 'security.password_min_length', 8),
+      require_2fa_for_admins: false,
+    },
+  } as SystemSettings;
+}
+
+async function fetchGeneralSettings(): Promise<SystemSettings['general']> {
+  const response = await apiRequest<GeneralSettingsResponse>('/api/v1/admin/settings/general');
+  return response.settings;
+}
+
+async function updateGeneralSettings(settings: SystemSettings['general']): Promise<SystemSettings['general']> {
+  const response = await apiRequest<GeneralSettingsResponse>('/api/v1/admin/settings/general', {
+    method: 'PUT',
+    body: JSON.stringify(settings),
+  });
+  return response.settings;
 }
 
 async function fetchPlatformSettings(): Promise<PlatformSettingsResponse> {
@@ -123,9 +155,16 @@ async function updatePlatformSettings(canonicalUrl: string): Promise<void> {
 }
 
 async function updateSystemSettings(settings: Partial<SystemSettings>): Promise<void> {
+  const payload = settings.security ? {
+    'security.require_email_verification': settings.security.require_email_verification,
+    'security.max_login_attempts': settings.security.max_login_attempts,
+    'security.password_min_length': settings.security.password_min_length,
+    'security.require_2fa_for_admins': false,
+  } : settings;
+
   await apiRequest('/api/v1/admin/settings', {
     method: 'PUT',
-    body: JSON.stringify(settings),
+    body: JSON.stringify(payload),
   });
 }
 
@@ -182,19 +221,22 @@ function StatusBadge({ status }: { readonly status: HealthStatus }) {
   }
 }
 
-function GeneralSettings({ settings, onUpdate }: {
+function GeneralSettings({ settings, onUpdate, isSaving = false }: {
   readonly settings: SystemSettings['general'];
-  readonly onUpdate: (updates: Partial<SystemSettings['general']>) => void;
+  readonly onUpdate: (updates: SystemSettings['general']) => void;
+  readonly isSaving?: boolean;
 }) {
   const [localSettings, setLocalSettings] = useState(settings || {
-    platform_name: '',
-    platform_description: '',
-    max_clubs_per_user: 5,
-    max_books_per_club: 10,
-    max_participants_per_club: 50,
-    maintenance_mode: false,
-    registration_enabled: true,
+    registrationEnabled: true,
+    maintenanceMode: false,
+    maintenanceReason: '',
+    maintenanceUntil: '',
+    maintenanceMessage: '',
   });
+
+  React.useEffect(() => {
+    setLocalSettings(settings);
+  }, [settings]);
 
   const handleSave = () => {
     onUpdate(localSettings);
@@ -210,84 +252,68 @@ function GeneralSettings({ settings, onUpdate }: {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="platform_name">Название платформы</Label>
-              <Input
-                id="platform_name"
-                value={localSettings.platform_name}
-                onChange={(e) => setLocalSettings(prev => ({ ...prev, platform_name: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="max_clubs">Макс. клубов на пользователя</Label>
-              <Input
-                id="max_clubs"
-                type="number"
-                value={localSettings.max_clubs_per_user}
-                onChange={(e) => setLocalSettings(prev => ({ ...prev, max_clubs_per_user: Number.parseInt(e.target.value) }))}
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="platform_description">Описание платформы</Label>
-            <Textarea
-              id="platform_description"
-              value={localSettings.platform_description}
-              onChange={(e) => setLocalSettings(prev => ({ ...prev, platform_description: e.target.value }))}
-              rows={3}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="max_books">Макс. книг в клубе</Label>
-              <Input
-                id="max_books"
-                type="number"
-                value={localSettings.max_books_per_club}
-                onChange={(e) => setLocalSettings(prev => ({ ...prev, max_books_per_club: Number.parseInt(e.target.value) }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="max_participants">Макс. участников в клубе</Label>
-              <Input
-                id="max_participants"
-                type="number"
-                value={localSettings.max_participants_per_club}
-                onChange={(e) => setLocalSettings(prev => ({ ...prev, max_participants_per_club: Number.parseInt(e.target.value) }))}
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div className="space-y-1">
-              <Label htmlFor="maintenance_mode">Режим обслуживания</Label>
-              <p className="text-sm text-gray-500">Отключает платформу для пользователей</p>
-            </div>
-            <Switch
-              id="maintenance_mode"
-              checked={localSettings.maintenance_mode}
-              onCheckedChange={(checked) => setLocalSettings(prev => ({ ...prev, maintenance_mode: checked }))}
-            />
-          </div>
-
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between rounded-lg border p-4">
             <div className="space-y-1">
               <Label htmlFor="registration_enabled">Регистрация открыта</Label>
               <p className="text-sm text-gray-500">Разрешить регистрацию новых пользователей</p>
             </div>
             <Switch
               id="registration_enabled"
-              checked={localSettings.registration_enabled}
-              onCheckedChange={(checked) => setLocalSettings(prev => ({ ...prev, registration_enabled: checked }))}
+              checked={localSettings.registrationEnabled}
+              onCheckedChange={(checked) => setLocalSettings(prev => ({ ...prev, registrationEnabled: checked }))}
             />
           </div>
 
-          <Button onClick={handleSave} className="w-full">
+          <div className="rounded-lg border p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <Label htmlFor="maintenance_mode">Режим обслуживания</Label>
+                <p className="text-sm text-gray-500">Заблокировать интерфейс для всех, кроме администраторов</p>
+              </div>
+              <Switch
+                id="maintenance_mode"
+                checked={localSettings.maintenanceMode}
+                onCheckedChange={(checked) => setLocalSettings(prev => ({ ...prev, maintenanceMode: checked }))}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="maintenance_reason">Причина остановки</Label>
+              <Input
+                id="maintenance_reason"
+                value={localSettings.maintenanceReason}
+                onChange={(e) => setLocalSettings(prev => ({ ...prev, maintenanceReason: e.target.value }))}
+                placeholder="Например: Обновление сервера"
+              />
+              <p className="text-sm text-gray-500">Краткое описание причины технических работ</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="maintenance_until">Ориентировочное время окончания</Label>
+              <Input
+                id="maintenance_until"
+                value={localSettings.maintenanceUntil}
+                onChange={(e) => setLocalSettings(prev => ({ ...prev, maintenanceUntil: e.target.value }))}
+                placeholder="Например: 18:00 или 2 часа"
+              />
+              <p className="text-sm text-gray-500">Когда планируется завершение работ</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="maintenance_message">Дополнительное сообщение</Label>
+              <Textarea
+                id="maintenance_message"
+                value={localSettings.maintenanceMessage}
+                onChange={(e) => setLocalSettings(prev => ({ ...prev, maintenanceMessage: e.target.value }))}
+                placeholder="Введите дополнительную информацию для пользователей..."
+                rows={4}
+              />
+            </div>
+          </div>
+
+          <Button type="button" onClick={handleSave} className="w-full" disabled={isSaving}>
             <Save className="w-4 h-4 mr-2" />
-            Сохранить изменения
+            {isSaving ? 'Сохраняем...' : 'Сохранить изменения'}
           </Button>
         </CardContent>
       </Card>
@@ -302,12 +328,13 @@ function SecuritySettings({ settings, onUpdate }: {
   const [localSettings, setLocalSettings] = useState(settings || {
     require_email_verification: true,
     max_login_attempts: 5,
-    session_timeout_hours: 24,
     password_min_length: 8,
     require_2fa_for_admins: false,
-    allowed_file_types: ['.epub', '.fb2', '.pdf'],
-    max_file_size_mb: 50,
   });
+
+  React.useEffect(() => {
+    setLocalSettings(settings);
+  }, [settings]);
 
   const handleSave = () => {
     onUpdate(localSettings);
@@ -329,53 +356,25 @@ function SecuritySettings({ settings, onUpdate }: {
               <Input
                 id="max_login_attempts"
                 type="number"
+                min={3}
+                max={20}
                 value={localSettings.max_login_attempts}
                 onChange={(e) => setLocalSettings(prev => ({ ...prev, max_login_attempts: Number.parseInt(e.target.value) }))}
               />
+              <p className="text-xs text-gray-500">Количество неверных попыток за 15 минут до временной блокировки.</p>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="session_timeout">Таймаут сессии (часы)</Label>
-              <Input
-                id="session_timeout"
-                type="number"
-                value={localSettings.session_timeout_hours}
-                onChange={(e) => setLocalSettings(prev => ({ ...prev, session_timeout_hours: Number.parseInt(e.target.value) }))}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="password_min_length">Мин. длина пароля</Label>
               <Input
                 id="password_min_length"
                 type="number"
+                min={8}
+                max={128}
                 value={localSettings.password_min_length}
                 onChange={(e) => setLocalSettings(prev => ({ ...prev, password_min_length: Number.parseInt(e.target.value) }))}
               />
+              <p className="text-xs text-gray-500">Применяется к регистрации, смене и сбросу пароля.</p>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="max_file_size">Макс. размер файла (МБ)</Label>
-              <Input
-                id="max_file_size"
-                type="number"
-                value={localSettings.max_file_size_mb}
-                onChange={(e) => setLocalSettings(prev => ({ ...prev, max_file_size_mb: Number.parseInt(e.target.value) }))}
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="allowed_file_types">Разрешенные типы файлов</Label>
-            <Input
-              id="allowed_file_types"
-              value={localSettings.allowed_file_types.join(', ')}
-              onChange={(e) => setLocalSettings(prev => ({ 
-                ...prev, 
-                allowed_file_types: e.target.value.split(',').map(s => s.trim()) 
-              }))}
-              placeholder=".epub, .fb2, .pdf"
-            />
           </div>
 
           <div className="flex items-center justify-between">
@@ -390,15 +389,15 @@ function SecuritySettings({ settings, onUpdate }: {
             />
           </div>
 
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between rounded-lg border border-dashed bg-gray-50 p-4 opacity-70">
             <div className="space-y-1">
               <Label htmlFor="require_2fa_for_admins">2FA для администраторов</Label>
-              <p className="text-sm text-gray-500">Требовать двухфакторную аутентификацию для админов</p>
+              <p className="text-sm text-gray-500">TOTP будет реализован отдельным этапом</p>
             </div>
             <Switch
               id="require_2fa_for_admins"
-              checked={localSettings.require_2fa_for_admins}
-              onCheckedChange={(checked) => setLocalSettings(prev => ({ ...prev, require_2fa_for_admins: checked }))}
+              checked={false}
+              disabled
             />
           </div>
 
@@ -1471,6 +1470,11 @@ export default function AdminSettings() {
     queryFn: fetchSystemSettings,
   });
 
+  const { data: generalSettings, isLoading: generalSettingsLoading } = useQuery<SystemSettings['general']>({
+    queryKey: ['admin-general-settings'],
+    queryFn: fetchGeneralSettings,
+  });
+
   const { data: health, isLoading: healthLoading, error: healthError } = useQuery<SystemHealth>({
     queryKey: ['system-health'],
     queryFn: fetchSystemHealth,
@@ -1484,11 +1488,30 @@ export default function AdminSettings() {
     },
   });
 
+  const updateGeneralSettingsMutation = useMutation({
+    mutationFn: updateGeneralSettings,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-general-settings'] });
+      queryClient.invalidateQueries({ queryKey: ['public-general-settings'] });
+      void modalAlert({
+        title: 'Настройки сохранены',
+        description: 'Общие настройки платформы обновлены.',
+      });
+    },
+    onError: (error) => {
+      void modalAlert({
+        title: 'Не удалось сохранить настройки',
+        description: error instanceof Error ? error.message : 'Проверьте права администратора и попробуйте ещё раз.',
+        variant: 'destructive',
+      });
+    },
+  });
+
   const handleUpdateSettings = (updates: Partial<SystemSettings>) => {
     updateSettingsMutation.mutate(updates);
   };
 
-  if (settingsLoading) {
+  if (settingsLoading || generalSettingsLoading) {
     return (
       <AdminLayout>
         <div className="flex items-center justify-center h-64">
@@ -1501,7 +1524,7 @@ export default function AdminSettings() {
     );
   }
 
-  if (!settings) {
+  if (!settings || !generalSettings) {
     return (
       <AdminLayout>
         <div className="flex items-center justify-center h-64">
@@ -1536,8 +1559,9 @@ export default function AdminSettings() {
 
           <TabsContent value="general" className="space-y-6">
             <GeneralSettings 
-              settings={settings.general} 
-              onUpdate={(updates) => handleUpdateSettings({ general: { ...settings.general, ...updates } })}
+              settings={generalSettings} 
+              onUpdate={(updates) => updateGeneralSettingsMutation.mutate(updates)}
+              isSaving={updateGeneralSettingsMutation.isPending}
             />
             <PlatformUrlSettings />
           </TabsContent>

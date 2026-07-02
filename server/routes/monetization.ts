@@ -4,6 +4,8 @@ import { db } from '../db.js';
 import { jwtAuth, requireAdmin } from '../jwt-middleware.js';
 import { AdminCommerceService } from '../services/commerce/admin-commerce-service.js';
 import { CommerceService, financialDashboard, PaymentGatewayService, PaymentNotificationProcessorService } from '../services/monetization.js';
+import { financialAuditSummary, getAuditPaymentDetails, listAuditEntitlements, listAuditLedger, listAuditOrders, listAuditPayments, listDiscrepancies, listProviderEvents, type AuditFilters } from '../services/commerce-audit.js';
+import { executeFinancialReset, financialResetPreview } from '../services/commerce-financial-reset.js';
 import { commerceEntitlements, commerceOrders, commercePayments, commercePrices, commerceProductFeatures, commerceProducts, readerClubTariffAssignments, readerClubTariffRequests, readerClubTariffTemplates, type PaymentProviderCode } from '../../shared/schema.js';
 import { and, desc, eq, or, sql } from 'drizzle-orm';
 
@@ -117,9 +119,34 @@ const subscriptionListQuerySchema = auditListQuerySchema.extend({
   search: z.string().min(1).max(120).optional(),
 });
 
+const auditFiltersSchema = z.object({
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
+  status: z.string().min(1).max(40).optional(),
+  provider: z.string().min(1).max(40).optional(),
+  productType: z.string().min(1).max(40).optional(),
+  scopeType: z.string().min(1).max(30).optional(),
+  scopeId: z.string().min(1).optional(),
+  userId: z.string().min(1).optional(),
+  recipientUserId: z.string().min(1).optional(),
+  search: z.string().min(1).max(120).optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+  sort: z.string().min(1).max(60).optional(),
+  direction: z.enum(['asc', 'desc']).optional(),
+});
+
+function parseAuditFilters(query: Record<string, unknown>): AuditFilters {
+  return auditFiltersSchema.parse(query);
+}
+
 const subscriptionActionSchema = z.object({
   actionType: z.enum(['revoke_now', 'cancel_at_period_end', 'restore', 'delete_revoked']),
   reason: z.string().trim().min(3).max(1000),
+});
+
+const financialResetExecuteSchema = z.object({
+  confirmationPhrase: z.string().min(1),
 });
 
 const readerClubTariffTemplateSchema = z.object({
@@ -503,6 +530,79 @@ router.post('/admin/grants', jwtAuth, requireAdmin, async (req, res, next) => {
 router.delete('/admin/entitlements/:id', jwtAuth, requireAdmin, async (req, res, next) => {
   try {
     res.json(await new CommerceService().revokeEntitlement(req.params.id));
+  } catch (error) { next(error); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Financial Audit API — read-only, jwtAuth + requireAdmin
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get('/admin/audit/summary', jwtAuth, requireAdmin, async (req, res, next) => {
+  try {
+    res.json(await financialAuditSummary(parseAuditFilters(req.query as Record<string, unknown>)));
+  } catch (error) { next(error); }
+});
+
+router.get('/admin/audit/payments', jwtAuth, requireAdmin, async (req, res, next) => {
+  try {
+    res.json(await listAuditPayments(parseAuditFilters(req.query as Record<string, unknown>)));
+  } catch (error) { next(error); }
+});
+
+router.get('/admin/audit/payments/:id', jwtAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const details = await getAuditPaymentDetails(req.params.id);
+    if (!details) return res.status(404).json({ message: 'Платёж не найден' });
+    res.json(details);
+  } catch (error) { next(error); }
+});
+
+router.get('/admin/audit/orders', jwtAuth, requireAdmin, async (req, res, next) => {
+  try {
+    res.json(await listAuditOrders(parseAuditFilters(req.query as Record<string, unknown>)));
+  } catch (error) { next(error); }
+});
+
+router.get('/admin/audit/ledger', jwtAuth, requireAdmin, async (req, res, next) => {
+  try {
+    res.json(await listAuditLedger(parseAuditFilters(req.query as Record<string, unknown>)));
+  } catch (error) { next(error); }
+});
+
+router.get('/admin/audit/entitlements', jwtAuth, requireAdmin, async (req, res, next) => {
+  try {
+    res.json(await listAuditEntitlements(parseAuditFilters(req.query as Record<string, unknown>)));
+  } catch (error) { next(error); }
+});
+
+router.get('/admin/audit/provider-events', jwtAuth, requireAdmin, async (req, res, next) => {
+  try {
+    res.json(await listProviderEvents(parseAuditFilters(req.query as Record<string, unknown>)));
+  } catch (error) { next(error); }
+});
+
+router.get('/admin/audit/events', jwtAuth, requireAdmin, async (req, res, next) => {
+  try {
+    res.json(await listProviderEvents(parseAuditFilters(req.query as Record<string, unknown>)));
+  } catch (error) { next(error); }
+});
+
+router.get('/admin/audit/discrepancies', jwtAuth, requireAdmin, async (req, res, next) => {
+  try {
+    res.json(await listDiscrepancies(parseAuditFilters(req.query as Record<string, unknown>)));
+  } catch (error) { next(error); }
+});
+
+router.get('/admin/financial-reset/preview', jwtAuth, requireAdmin, async (req, res, next) => {
+  try {
+    res.json(await financialResetPreview(req.user!.userId));
+  } catch (error) { next(error); }
+});
+
+router.post('/admin/financial-reset/execute', jwtAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const payload = financialResetExecuteSchema.parse(req.body);
+    res.json(await executeFinancialReset(req.user!.userId, payload.confirmationPhrase));
   } catch (error) { next(error); }
 });
 

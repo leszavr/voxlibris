@@ -388,15 +388,16 @@ router.get('/stats', jwtAuth, requireAdmin, async (req: Request, res: Response) 
       .where(gte(analyticsEvents.createdAt, startDate))
       .groupBy(analyticsEvents.eventType);
 
-    // Топ-10 самых читаемых книг (ищем в personal_books и club_books)
+    // Топ-10 самых читаемых книг во всех источниках книг
     const topBooksRaw = await db
       .select({
         bookId: analyticsEvents.bookId,
-        title: sql<string>`COALESCE(${personalBooks.title}, ${clubBooks.title}, 'Неизвестная книга')`,
-        author: sql<string>`COALESCE(${personalBooks.author}, ${clubBooks.author})`,
+        title: sql<string>`COALESCE(${books.title}, ${personalBooks.title}, ${clubBooks.title}, 'Неизвестная книга')`,
+        author: sql<string>`COALESCE(${books.author}, ${personalBooks.author}, ${clubBooks.author})`,
         events: count(),
       })
       .from(analyticsEvents)
+      .leftJoin(books, eq(analyticsEvents.bookId, books.id))
       .leftJoin(personalBooks, eq(analyticsEvents.bookId, personalBooks.id))
       .leftJoin(clubBooks, eq(analyticsEvents.bookId, clubBooks.id))
       .where(
@@ -405,7 +406,7 @@ router.get('/stats', jwtAuth, requireAdmin, async (req: Request, res: Response) 
           inArray(analyticsEvents.eventType, ['book_open', 'reading_session', 'chapter_complete'])
         )
       )
-      .groupBy(analyticsEvents.bookId, personalBooks.title, personalBooks.author, clubBooks.title, clubBooks.author)
+      .groupBy(analyticsEvents.bookId, books.title, books.author, personalBooks.title, personalBooks.author, clubBooks.title, clubBooks.author)
       .orderBy(desc(count()))
       .limit(10);
 

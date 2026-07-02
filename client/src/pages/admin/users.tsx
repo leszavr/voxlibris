@@ -5,7 +5,6 @@ import {
   BellRing,
   CheckCircle,
   Clock,
-  Download,
   KeyRound,
   LogIn,
   MoreHorizontal,
@@ -15,11 +14,10 @@ import {
   ShieldCheck,
   Trash2,
   User as UserIcon,
-  UserPlus,
   Mic2,
 } from "lucide-react";
 import { Pencil } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { AdminLayout } from "@/components/layout/AdminLayout";
 import {
@@ -92,13 +90,21 @@ interface UsersFilters {
   status: string;
   page: number;
   limit: number;
+  sortBy: UserSortKey;
+  sortDirection: SortDirection;
 }
+
+type UserSortKey = "created_at" | "last_active" | "username" | "email" | "role" | "status" | "books_read" | "clubs_created" | "clubs_joined";
+type SortDirection = "asc" | "desc";
+type UserGroupKey = "none" | "role" | "status";
 
 async function fetchUsers(filters: UsersFilters): Promise<UsersResponse> {
   const params = new URLSearchParams();
   if (filters.search) params.append("search", filters.search);
   if (filters.role && filters.role !== "all") params.append("role", filters.role);
   if (filters.status && filters.status !== "all") params.append("status", filters.status);
+  params.append("sortBy", filters.sortBy);
+  params.append("sortDirection", filters.sortDirection);
   params.append("page", filters.page.toString());
   params.append("limit", filters.limit.toString());
 
@@ -191,8 +197,9 @@ async function impersonateUser(userId: string): Promise<ImpersonateResponse> {
   });
 }
 
-async function fetchDeletedUsers(): Promise<UsersResponse> {
-  const data = await apiRequest<{ users: User[] }>("/api/v1/admin/users/deleted");
+async function fetchDeletedUsers(sortBy: UserSortKey, sortDirection: SortDirection): Promise<UsersResponse> {
+  const params = new URLSearchParams({ sortBy, sortDirection });
+  const data = await apiRequest<{ users: User[] }>(`/api/v1/admin/users/deleted?${params.toString()}`);
   return {
     users: data.users,
     total: data.users.length,
@@ -262,6 +269,20 @@ function UserRoleBadge({ role }: Readonly<{ role: User["role"] }>) {
     default:
       return <Badge variant="outline">{role}</Badge>;
   }
+}
+
+function groupUsers(users: User[], groupBy: UserGroupKey) {
+  if (groupBy === "none") return [{ key: "all", title: "Все пользователи", users }];
+  const groups = new Map<string, User[]>();
+  for (const user of users) {
+    const key = user[groupBy];
+    groups.set(key, [...(groups.get(key) ?? []), user]);
+  }
+  return Array.from(groups.entries()).map(([key, group]) => ({
+    key,
+    title: groupBy === "role" ? `Роль: ${key}` : `Статус: ${key}`,
+    users: group,
+  }));
 }
 
 function UserActionsMenu({ user }: Readonly<{ user: User }>) {
@@ -692,12 +713,16 @@ function UserActionsMenu({ user }: Readonly<{ user: User }>) {
   );
 }
 
-function UsersTable({ users }: Readonly<{ users: User[] }>) {
+function UsersTable({ users, selectedIds, onToggleUser, onToggleAll }: Readonly<{ users: User[]; selectedIds: Set<string>; onToggleUser: (id: string) => void; onToggleAll: (users: User[]) => void }>) {
+  const allSelected = users.length > 0 && users.every((user) => selectedIds.has(user.id));
   return (
     <div className="overflow-x-auto">
       <table className="w-full">
         <thead>
           <tr className="border-b bg-gray-50">
+            <th className="w-10 p-4">
+              <input type="checkbox" checked={allSelected} onChange={() => onToggleAll(users)} aria-label="Выбрать всех пользователей в списке" />
+            </th>
             <th className="text-left p-4 font-medium text-gray-600">Пользователь</th>
             <th className="text-left p-4 font-medium text-gray-600">Роль</th>
             <th className="text-left p-4 font-medium text-gray-600">Статус</th>
@@ -709,6 +734,9 @@ function UsersTable({ users }: Readonly<{ users: User[] }>) {
         <tbody>
           {users.map((user) => (
             <tr key={user.id} className="border-b hover:bg-gray-50">
+              <td className="p-4">
+                <input type="checkbox" checked={selectedIds.has(user.id)} onChange={() => onToggleUser(user.id)} aria-label={`Выбрать ${user.username}`} />
+              </td>
               <td className="p-4">
                 <div>
                   <div className="font-medium text-gray-900">{user.full_name || user.username}</div>
@@ -747,7 +775,7 @@ function UsersTable({ users }: Readonly<{ users: User[] }>) {
               <td className="p-4">
                 <div className="text-sm">
                   <div>{user.books_read ?? 0} книг прочитано</div>
-                  <div className="text-gray-500">
+                  <div className="text-gray-500" title="Клубы: сколько пользователь создал клубов и в скольких клубах состоит как участник">
                     Создал: {user.clubs_created ?? 0} / Участник: {user.clubs_joined ?? 0}
                   </div>
                 </div>
@@ -818,13 +846,18 @@ function UsersTableSkeleton() {
 
 export default function AdminUsers() {
   const [activeTab, setActiveTab] = useState("active");
+  const queryClient = useQueryClient();
   const [filters, setFilters] = useState<UsersFilters>({
     search: "",
     role: "all",
     status: "all",
     page: 1,
     limit: 20,
+    sortBy: "created_at",
+    sortDirection: "desc",
   });
+  const [groupBy, setGroupBy] = useState<UserGroupKey>("none");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const { data, isLoading, error } = useQuery<UsersResponse>({
     queryKey: ["admin-users", filters],
@@ -837,8 +870,8 @@ export default function AdminUsers() {
     isLoading: deletedLoading,
     error: deletedError,
   } = useQuery<UsersResponse>({
-    queryKey: ["admin-deleted-users"],
-    queryFn: fetchDeletedUsers,
+    queryKey: ["admin-deleted-users", filters.sortBy, filters.sortDirection],
+    queryFn: () => fetchDeletedUsers(filters.sortBy, filters.sortDirection),
     enabled: activeTab === "deleted",
   });
 
@@ -861,13 +894,55 @@ export default function AdminUsers() {
   const currentData = activeTab === "deleted" ? deletedData : data;
   const currentLoading = activeTab === "deleted" ? deletedLoading : isLoading;
   const currentError = activeTab === "deleted" ? deletedError : error;
+  const groupedUsers = useMemo(() => groupUsers(currentData?.users ?? [], groupBy), [currentData?.users, groupBy]);
+  const selectedUsersCount = selectedIds.size;
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async () => {
+      const ids = Array.from(selectedIds);
+      if (activeTab === "deleted") {
+        await Promise.all(ids.map(permanentDeleteUser));
+      } else {
+        await Promise.all(ids.map(deleteUser));
+      }
+    },
+    onSuccess: () => {
+      setSelectedIds(new Set());
+      void queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      void queryClient.invalidateQueries({ queryKey: ["admin-deleted-users"] });
+    },
+  });
+
+  const toggleUser = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = (usersToToggle: User[]) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      const allSelected = usersToToggle.every((user) => next.has(user.id));
+      for (const user of usersToToggle) {
+        if (allSelected) next.delete(user.id); else next.add(user.id);
+      }
+      return next;
+    });
+  };
 
   const renderUsersTable = () => {
     if (currentLoading) {
       return <UsersTableSkeleton />;
     }
     if (currentData && currentData.users.length > 0) {
-      return <UsersTable users={currentData.users} />;
+      return groupedUsers.map((group) => (
+        <div key={group.key} className="border-b last:border-b-0">
+          {groupBy !== "none" ? <div className="bg-gray-50 px-4 py-2 text-sm font-semibold text-gray-700">{group.title} · {group.users.length}</div> : null}
+          <UsersTable users={group.users} selectedIds={selectedIds} onToggleUser={toggleUser} onToggleAll={toggleAll} />
+        </div>
+      ));
     }
     return (
       <div className="text-center py-12">
@@ -895,7 +970,12 @@ export default function AdminUsers() {
               окончательно.
             </p>
           </div>
-          <UsersTable users={currentData.users} />
+          {groupedUsers.map((group) => (
+            <div key={group.key} className="border-b last:border-b-0">
+              {groupBy !== "none" ? <div className="bg-red-50 px-4 py-2 text-sm font-semibold text-red-800">{group.title} · {group.users.length}</div> : null}
+              <UsersTable users={group.users} selectedIds={selectedIds} onToggleUser={toggleUser} onToggleAll={toggleAll} />
+            </div>
+          ))}
         </>
       );
     }
@@ -936,20 +1016,10 @@ export default function AdminUsers() {
               {currentData ? `Найдено ${currentData.total} пользователей` : "Загрузка..."}
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <Button variant="outline">
-              <Download className="h-4 w-4 mr-2" />
-              Экспорт
-            </Button>
-            <Button>
-              <UserPlus className="h-4 w-4 mr-2" />
-              Добавить пользователя
-            </Button>
-          </div>
         </div>
 
         {/* Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <Tabs value={activeTab} onValueChange={(value) => { setActiveTab(value); setSelectedIds(new Set()); }}>
           <TabsList>
             <TabsTrigger value="active">Активные пользователи</TabsTrigger>
             <TabsTrigger value="deleted" className="text-red-600">
@@ -958,7 +1028,50 @@ export default function AdminUsers() {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="active" className="space-y-4 mt-6">
+          <Card className="mt-6">
+            <CardContent className="flex flex-col gap-3 p-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-wrap gap-3">
+                <Select value={filters.sortBy} onValueChange={(value) => setFilters((prev) => ({ ...prev, sortBy: value as UserSortKey, page: 1 }))}>
+                  <SelectTrigger className="w-56"><SelectValue placeholder="Сортировка" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="created_at">Дата регистрации</SelectItem>
+                    <SelectItem value="last_active">Последняя активность</SelectItem>
+                    <SelectItem value="username">Username</SelectItem>
+                    <SelectItem value="email">Email</SelectItem>
+                    <SelectItem value="role">Роль</SelectItem>
+                    <SelectItem value="status">Статус</SelectItem>
+                    <SelectItem value="books_read">Книг прочитано</SelectItem>
+                    <SelectItem value="clubs_created">Клубов создано</SelectItem>
+                    <SelectItem value="clubs_joined">Участие в клубах</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={filters.sortDirection} onValueChange={(value) => setFilters((prev) => ({ ...prev, sortDirection: value as SortDirection, page: 1 }))}>
+                  <SelectTrigger className="w-40"><SelectValue placeholder="Порядок" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="desc">По убыванию</SelectItem>
+                    <SelectItem value="asc">По возрастанию</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={groupBy} onValueChange={(value) => setGroupBy(value as UserGroupKey)}>
+                  <SelectTrigger className="w-44"><SelectValue placeholder="Группировка" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Без группировки</SelectItem>
+                    <SelectItem value="role">По роли</SelectItem>
+                    <SelectItem value="status">По статусу</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => toggleAll(currentData?.users ?? [])} disabled={!currentData?.users.length}>Выбрать всех на странице</Button>
+                <Button variant="outline" size="sm" onClick={() => setSelectedIds(new Set())} disabled={selectedUsersCount === 0}>Снять выбор</Button>
+                <Button variant="destructive" size="sm" onClick={() => bulkDeleteMutation.mutate()} disabled={selectedUsersCount === 0 || bulkDeleteMutation.isPending}>
+                  {bulkDeleteMutation.isPending ? "Удаление..." : activeTab === "deleted" ? `Удалить окончательно (${selectedUsersCount})` : `Удалить выбранных (${selectedUsersCount})`}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <TabsContent value="active" className="space-y-4 mt-4">
             {/* Filters */}
             <Card>
               <CardContent className="p-4">

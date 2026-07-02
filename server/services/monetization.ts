@@ -537,6 +537,7 @@ export class PaymentNotificationProcessorService {
         }
         await tx.update(commercePaymentEvents).set({ status: 'processed', processedAt: new Date() }).where(eq(commercePaymentEvents.id, paymentEvent.id));
       });
+
       if (event.status === 'succeeded') {
         const [payment] = await db.select({ id: commercePayments.id }).from(commercePayments).where(eq(commercePayments.providerPaymentId, event.providerPaymentId)).limit(1);
         if (payment) {

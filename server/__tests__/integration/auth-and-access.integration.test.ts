@@ -121,6 +121,40 @@ describe("Integration: auth and protected API boundaries", () => {
     }
   });
 
+  it("POST /api/auth/reset-password применяет password policy до сброса", async (t) => {
+    if (!apiAvailable) return t.skip(`API server is not available at ${TEST_API_BASE_URL}`);
+
+    const { response, body } = await apiRequest<{ code?: string; message?: string }>('/api/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token: 'integration-test-token', password: 'A1' }),
+    });
+
+    expectStatus(response, 400);
+    assert.equal(body.code, 'PASSWORD_POLICY_FAILED');
+    assert.match(body.message ?? '', /минимум|символ/i);
+  });
+
+  it("POST /api/auth/login ограничивает частые неверные попытки", async (t) => {
+    if (!apiAvailable) return t.skip(`API server is not available at ${TEST_API_BASE_URL}`);
+
+    const username = `missing-user-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    let lastStatus = 0;
+    let lastBody: { code?: string; message?: string } = {};
+
+    for (let attempt = 0; attempt < 21; attempt += 1) {
+      const { response, body } = await apiRequest<{ code?: string; message?: string }>('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ username, password: 'WrongPassword123' }),
+      });
+      lastStatus = response.status;
+      lastBody = body;
+      if (response.status === 429) break;
+    }
+
+    assert.equal(lastStatus, 429);
+    assert.equal(lastBody.code, 'LOGIN_ATTEMPTS_LIMIT');
+  });
+
   it("POST /api/auth/refresh без cookie возвращает 401", async (t) => {
     if (!apiAvailable) return t.skip(`API server is not available at ${TEST_API_BASE_URL}`);
 
@@ -137,6 +171,35 @@ describe("Integration: auth and protected API boundaries", () => {
 
     expectStatus(response, 200);
     assert.match(body.message ?? "", /выход|logout/i);
+  });
+
+  it("GET /api/v1/admin/settings/general/public отдаёт публичные общие настройки", async (t) => {
+    if (!apiAvailable) return t.skip(`API server is not available at ${TEST_API_BASE_URL}`);
+
+    const { response, body } = await apiRequest<{
+      settings?: {
+        registrationEnabled?: boolean;
+        maintenanceMode?: boolean;
+        maintenanceReason?: string;
+        maintenanceUntil?: string;
+        maintenanceMessage?: string;
+      };
+    }>('/api/v1/admin/settings/general/public');
+
+    expectStatus(response, 200);
+    assert.equal(typeof body.settings?.registrationEnabled, 'boolean');
+    assert.equal(typeof body.settings?.maintenanceMode, 'boolean');
+    assert.equal(typeof body.settings?.maintenanceReason, 'string');
+    assert.equal(typeof body.settings?.maintenanceUntil, 'string');
+    assert.equal(typeof body.settings?.maintenanceMessage, 'string');
+  });
+
+  it("GET /api/v1/admin/settings без токена защищён", async (t) => {
+    if (!apiAvailable) return t.skip(`API server is not available at ${TEST_API_BASE_URL}`);
+
+    const { response } = await apiRequest('/api/v1/admin/settings');
+
+    expectStatus(response, 401);
   });
 
   it("POST /api/v1/feedback с невалидными данными возвращает 400 до отправки email", async (t) => {

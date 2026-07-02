@@ -1,0 +1,20 @@
+{
+  "name": "voxlibris-ui-test-runner-local",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "seed": "tsx scripts/seed.ts",
+    "test": "pnpm run seed && playwright test",
+    "test:headed": "pnpm run seed && playwright test --headed",
+    "report": "playwright show-report reports/html"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.57.0",
+    "@types/bcrypt": "^6.0.0",
+    "bcrypt": "^6.0.0",
+    "dotenv": "^17.2.3",
+    "postgres": "^3.4.7",
+    "tsx": "^4.20.5"
+  }
+}

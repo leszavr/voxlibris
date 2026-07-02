@@ -12,7 +12,6 @@ import {
   Search, 
   Download,
   BookOpen,
-  Upload,
   Ban,
   CheckCircle,
   AlertTriangle,
@@ -678,16 +677,6 @@ export default function AdminBooks() {
             <p className="text-gray-600 mt-2">
               {data && `Найдено ${data.pagination.total} книг`}
             </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <Button variant="outline">
-              <Download className="h-4 w-4 mr-2" />
-              Экспорт
-            </Button>
-            <Button>
-              <Upload className="h-4 w-4 mr-2" />
-              Загрузить книгу
-            </Button>
           </div>
         </div>
 

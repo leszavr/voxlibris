@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Link, useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,7 +7,19 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useAuth } from '@/hooks/use-auth';
 import { RegistrationErrorModal } from '@/components/ui/registration-error-modal';
+import { apiRequest } from '@/lib/queryClient';
 import { Mic, Eye, EyeOff, Check, X } from 'lucide-react';
+
+interface PublicGeneralSettings {
+  registrationEnabled: boolean;
+}
+
+async function fetchPublicGeneralSettings(): Promise<PublicGeneralSettings> {
+  const response = await apiRequest<{ settings: PublicGeneralSettings }>('/api/v1/admin/settings/general/public', {
+    cache: 'no-store',
+  });
+  return response.settings;
+}
 
 export default function Register() {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -29,6 +42,11 @@ export default function Register() {
   const [, setLocation] = useLocation();
   const { register } = useAuth();
   const [inviteToken, setInviteToken] = useState<string | undefined>(undefined);
+  const { data: generalSettings } = useQuery({
+    queryKey: ['public-general-settings'],
+    queryFn: fetchPublicGeneralSettings,
+    refetchInterval: 10_000,
+  });
 
   useEffect(() => {
     try {
@@ -144,6 +162,29 @@ export default function Register() {
     setShowErrorModal(false);
     setErrorMessage('');
   };
+
+  if (generalSettings?.registrationEnabled === false) {
+    return (
+      <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4 py-8">
+        <Card className="w-full max-w-md shadow-xl">
+          <CardHeader className="space-y-3">
+            <div className="mx-auto rounded-full bg-amber-50 p-3 text-amber-600">
+              <X className="h-6 w-6" />
+            </div>
+            <CardTitle className="text-center">Регистрация временно приостановлена</CardTitle>
+            <CardDescription className="text-center">
+              Сейчас создание новых аккаунтов недоступно. Пожалуйста, попробуйте позже.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button className="w-full" onClick={() => setLocation('/')}>
+              На главную
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-[100dvh] items-start justify-center bg-background px-4 py-8 sm:items-center sm:py-10">

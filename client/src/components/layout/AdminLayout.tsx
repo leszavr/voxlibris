@@ -18,7 +18,8 @@ import {
   Trophy,
   CreditCard,
   Receipt,
-  BadgeCheck
+  BadgeCheck,
+  ScrollText
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -42,7 +43,7 @@ const navigation = [
   { name: "Книги", href: "/admin/books", icon: BookOpen },
   { name: "Жанры", href: "/admin/genres", icon: Tags },
   { name: "Клубы", href: "/admin/clubs", icon: Users2 },
-  { name: "Отчёты", href: "/admin/reports", icon: FileText },
+  { name: "Жалобы", href: "/admin/reports", icon: FileText },
   { name: "Аналитика", href: "/admin/analytics", icon: TrendingUp },
   { name: "KPI Метрики", href: "/admin/kpi", icon: Target },
   { name: "Аудит", href: "/admin/audit", icon: Eye },
@@ -51,6 +52,7 @@ const navigation = [
   { name: "Платежи", href: "/admin/payment-providers", icon: CreditCard },
   { name: "Конструктор тарифов", href: "/admin/tariff-constructor", icon: Receipt },
   { name: "Подписки", href: "/admin/subscriptions", icon: BadgeCheck },
+  { name: "Финансовый аудит", href: "/admin/commerce-audit", icon: ScrollText },
   { name: "Настройки", href: "/admin/settings", icon: Settings },
 ];
 

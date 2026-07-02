@@ -75,13 +75,13 @@ export default function KPIDashboard() {
   const userMetricsData = [
     { name: 'Всего пользователей', value: kpis?.totalUsers || 0 },
     { name: 'Активные', value: kpis?.activeUsers || 0 },
-    { name: 'Новые за месяц', value: kpis?.newUsersThisMonth || 0 },
+    { name: 'Новые за период', value: kpis?.newUsersThisMonth || 0 },
   ];
 
   const contentMetricsData = [
     { name: 'Всего книг', value: kpis?.totalBooks || 0 },
     { name: 'Личные книги', value: kpis?.personalBooksCount || 0 },
-    { name: 'Прочитано за месяц', value: kpis?.booksReadThisMonth || 0 },
+    { name: 'Активные чтения', value: kpis?.booksReadThisMonth || 0 },
   ];
 
   const clubMetricsData = [
@@ -211,7 +211,7 @@ export default function KPIDashboard() {
                   </div>
                 </div>
                 <div className="border rounded-lg p-3">
-                  <div className="text-sm text-muted-foreground">Новых за месяц</div>
+                  <div className="text-sm text-muted-foreground">Новых за период</div>
                   <div className="text-xl font-bold flex items-center mt-1">
                     <Users className="h-4 w-4 mr-2 text-green-500" />
                     {kpis?.newUsersThisMonth || 0}
@@ -256,7 +256,7 @@ export default function KPIDashboard() {
                   </div>
                 </div>
                 <div className="border rounded-lg p-3">
-                  <div className="text-sm text-muted-foreground">Книг на юзера</div>
+                  <div className="text-sm text-muted-foreground">Книг на пользователя</div>
                   <div className="text-xl font-bold flex items-center mt-1">
                     <BookOpen className="h-4 w-4 mr-2 text-orange-500" />
                     {kpis?.avgBooksPerUser || 0}
@@ -328,7 +328,7 @@ export default function KPIDashboard() {
                 <div className="border rounded-lg p-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <div className="text-sm text-muted-foreground">Средне глав/книга</div>
+                  <div className="text-sm text-muted-foreground">Средний текущий раздел</div>
                       <div className="text-3xl font-bold mt-1">{kpis?.avgChaptersPerBook || 0}</div>
                     </div>
                     <BookOpen className="h-12 w-12 text-orange-500" />

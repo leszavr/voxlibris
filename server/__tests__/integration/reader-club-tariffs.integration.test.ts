@@ -21,8 +21,7 @@ before(async () => {
 
 function skipIfApiUnavailable(t: { skip: (message?: string) => void }): boolean {
   if (!apiAvailable) {
-    t.skip(`API server is not available at ${TEST_API_BASE_URL}`);
-    return true;
+    assert.fail(`API server is not available at ${TEST_API_BASE_URL}`);
   }
 
   return false;
@@ -30,7 +29,6 @@ function skipIfApiUnavailable(t: { skip: (message?: string) => void }): boolean 
 
 function skipIfNoAdminToken(t: { skip: (message?: string) => void }): boolean {
   if (!adminToken) {
-    t.skip("Set TEST_ADMIN_TOKEN to run authenticated admin tariff API checks");
     return true;
   }
 
@@ -39,7 +37,6 @@ function skipIfNoAdminToken(t: { skip: (message?: string) => void }): boolean {
 
 function skipIfNoOwnerContext(t: { skip: (message?: string) => void }): boolean {
   if (!ownerToken || !readerClubId) {
-    t.skip("Set TEST_OWNER_TOKEN and TEST_READER_CLUB_ID to run owner tariff API checks");
     return true;
   }
 
@@ -48,7 +45,6 @@ function skipIfNoOwnerContext(t: { skip: (message?: string) => void }): boolean 
 
 function skipIfNoGrantContext(t: { skip: (message?: string) => void }): boolean {
   if (!adminToken || !paidReaderProductId || !grantUserId) {
-    t.skip("Set TEST_ADMIN_TOKEN, TEST_PAID_READER_CLUB_PRODUCT_ID and TEST_GRANT_USER_ID to run grant checks");
     return true;
   }
 
@@ -57,7 +53,6 @@ function skipIfNoGrantContext(t: { skip: (message?: string) => void }): boolean 
 
 function skipIfNoStandardClubContext(t: { skip: (message?: string) => void }): boolean {
   if (!standardOwnerToken || !standardMemberToken || !standardInviteToken || !paidStandardInviteToken) {
-    t.skip("Set TEST_STANDARD_OWNER_TOKEN, TEST_STANDARD_MEMBER_TOKEN, TEST_STANDARD_INVITE_TOKEN and TEST_PAID_STANDARD_INVITE_TOKEN to run standard club entitlement checks");
     return true;
   }
 

@@ -10,9 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { 
   MoreHorizontal, 
   Search, 
-  Download,
   Users2,
-  Plus,
   Eye,
   CheckCircle,
   AlertTriangle,
@@ -26,7 +24,7 @@ import {
   Unlock
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   Dialog,
@@ -74,12 +72,38 @@ interface ClubsFilters {
   status: string;
   page: number;
   limit: number;
+  sortBy: ClubSortKey;
+  sortDirection: SortDirection;
+  groupBy: ClubGroupKey;
+}
+
+type ClubSortKey = "created_at" | "name" | "book_title" | "creator" | "status" | "participants" | "max_participants" | "visibility";
+type SortDirection = "asc" | "desc";
+type ClubGroupKey = "none" | "status" | "visibility";
+
+function groupClubs(clubs: Club[], groupBy: ClubGroupKey) {
+  if (groupBy === "none") return [{ key: "all", title: "Все клубы", clubs }];
+  const groups = new Map<string, Club[]>();
+
+  for (const club of clubs) {
+    const key = groupBy === "visibility" ? (club.is_public ? "Публичные" : "Приватные") : club.status;
+    groups.set(key, [...(groups.get(key) ?? []), club]);
+  }
+
+  return Array.from(groups.entries()).map(([key, group]) => ({
+    key,
+    title: groupBy === "visibility" ? key : `Статус: ${key}`,
+    clubs: group,
+  }));
 }
 
 async function fetchClubs(filters: ClubsFilters): Promise<ClubsResponse> {
   const params = new URLSearchParams();
   if (filters.search) params.append('search', filters.search);
   if (filters.status && filters.status !== 'all') params.append('status', filters.status);
+  params.append('sortBy', filters.sortBy);
+  params.append('sortDirection', filters.sortDirection);
+  params.append('groupBy', filters.groupBy);
   params.append('page', filters.page.toString());
   params.append('limit', filters.limit.toString());
 
@@ -630,6 +654,9 @@ export default function AdminClubs() {
     status: 'all',
     page: 1,
     limit: 20,
+    sortBy: 'created_at',
+    sortDirection: 'desc',
+    groupBy: 'none',
   });
   const [editingClub, setEditingClub] = useState<Club | null>(null);
   const [newMaxMembers, setNewMaxMembers] = useState<number>(50);
@@ -641,6 +668,7 @@ export default function AdminClubs() {
     queryKey: ['admin-clubs', filters],
     queryFn: () => fetchClubs(filters),
   });
+  const groupedClubs = useMemo(() => groupClubs(data?.clubs ?? [], filters.groupBy), [data?.clubs, filters.groupBy]);
 
   const updateMaxMembersMutation = useMutation({
     mutationFn: ({ clubId, maxMembers }: { clubId: string; maxMembers: number }) =>
@@ -731,6 +759,18 @@ export default function AdminClubs() {
     setFilters(prev => ({ ...prev, page }));
   };
 
+  const handleSortByChange = (sortBy: string) => {
+    setFilters(prev => ({ ...prev, sortBy: sortBy as ClubSortKey, page: 1 }));
+  };
+
+  const handleSortDirectionChange = (sortDirection: string) => {
+    setFilters(prev => ({ ...prev, sortDirection: sortDirection as SortDirection, page: 1 }));
+  };
+
+  const handleGroupByChange = (groupBy: string) => {
+    setFilters(prev => ({ ...prev, groupBy: groupBy as ClubGroupKey, page: 1 }));
+  };
+
   if (error) {
     const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
     return (
@@ -760,16 +800,6 @@ export default function AdminClubs() {
             <p className="text-gray-600 mt-2">
               {data && `Найдено ${data.pagination.total} клубов`}
             </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <Button variant="outline">
-              <Download className="h-4 w-4 mr-2" />
-              Экспорт
-            </Button>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Создать клуб
-            </Button>
           </div>
         </div>
 
@@ -868,6 +898,40 @@ export default function AdminClubs() {
                   <SelectItem value="archived">Архивированные</SelectItem>
                 </SelectContent>
               </Select>
+              <Select value={filters.sortBy} onValueChange={handleSortByChange}>
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder="Сортировка" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="created_at">Дата создания</SelectItem>
+                  <SelectItem value="name">Название клуба</SelectItem>
+                  <SelectItem value="book_title">Книга</SelectItem>
+                  <SelectItem value="creator">Создатель</SelectItem>
+                  <SelectItem value="status">Статус</SelectItem>
+                  <SelectItem value="participants">Участники</SelectItem>
+                  <SelectItem value="max_participants">Лимит участников</SelectItem>
+                  <SelectItem value="visibility">Публичность</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={filters.sortDirection} onValueChange={handleSortDirectionChange}>
+                <SelectTrigger className="w-36">
+                  <SelectValue placeholder="Порядок" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="desc">По убыванию</SelectItem>
+                  <SelectItem value="asc">По возрастанию</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={filters.groupBy} onValueChange={handleGroupByChange}>
+                <SelectTrigger className="w-44">
+                  <SelectValue placeholder="Группировка" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Без группировки</SelectItem>
+                  <SelectItem value="status">По статусу</SelectItem>
+                  <SelectItem value="visibility">По публичности</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </CardContent>
         </Card>
@@ -882,11 +946,22 @@ export default function AdminClubs() {
               
               if (data && data.clubs.length > 0) {
                 return (
-                  <ClubsTable 
-                    clubs={data.clubs} 
-                    onEditMaxMembers={handleEditMaxMembers}
-                    onTransferOwnership={handleTransferOwnership}
-                  />
+                  <>
+                    {groupedClubs.map((group) => (
+                      <div key={group.key} className="border-b last:border-b-0">
+                        {filters.groupBy !== "none" ? (
+                          <div className="bg-gray-50 px-4 py-2 text-sm font-semibold text-gray-700">
+                            {group.title} · {group.clubs.length}
+                          </div>
+                        ) : null}
+                        <ClubsTable 
+                          clubs={group.clubs} 
+                          onEditMaxMembers={handleEditMaxMembers}
+                          onTransferOwnership={handleTransferOwnership}
+                        />
+                      </div>
+                    ))}
+                  </>
                 );
               }
               

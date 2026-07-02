@@ -16,9 +16,9 @@ import { z } from 'zod';
 import type { UserRole, UserStatus, AdminActionType, AdminActionTargetType, InsertGenre } from '../shared/schema.js';
 import { db } from './db.js';
 import postgres from 'postgres';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
-import { books, personalBooks, clubBooks, users, clubs, clubMembers, readingSessions, conversations, directMessages, dmReports, dmAdminAccessLog, notifications, sessionRecordings, userProfiles } from '../shared/schema.js';
+import { books, personalBooks, clubBooks, users, clubs, clubMembers, readingHistory, readingProgress, readingSessions, conversations, directMessages, dmReports, dmAdminAccessLog, notifications, sessionRecordings, userProfiles } from '../shared/schema.js';
 import { logger } from './lib/logger.js';
 import { getStudioRecordingsDir } from './lib/studio-recording-storage.js';
 import {
@@ -529,6 +529,19 @@ type AdminUserRow = {
   canCreateReaderLedClubs: boolean;
 };
 
+type AdminUserSortKey = 'created_at' | 'last_active' | 'username' | 'email' | 'role' | 'status' | 'books_read' | 'clubs_created' | 'clubs_joined';
+type AdminUserSortDirection = 'asc' | 'desc';
+
+const adminUserSortKeys = new Set<AdminUserSortKey>(['created_at', 'last_active', 'username', 'email', 'role', 'status', 'books_read', 'clubs_created', 'clubs_joined']);
+
+function parseAdminUserSort(query: { sortBy?: unknown; sortDirection?: unknown }) {
+  const sortBy = typeof query.sortBy === 'string' && adminUserSortKeys.has(query.sortBy as AdminUserSortKey)
+    ? query.sortBy as AdminUserSortKey
+    : 'created_at';
+  const sortDirection: AdminUserSortDirection = query.sortDirection === 'asc' ? 'asc' : 'desc';
+  return { sortBy, sortDirection };
+}
+
 function parseCanCreateReaderLedClubs(readerSettings: string | null): boolean {
   if (!readerSettings) return false;
 
@@ -562,6 +575,8 @@ async function queryAdminUsersWithStats(params: {
   conditions: SQL<unknown>[];
   limit?: number;
   offset?: number;
+  sortBy?: AdminUserSortKey;
+  sortDirection?: AdminUserSortDirection;
 }) {
   let whereClause: SQL<unknown>;
   if (params.conditions.length === 0) {
@@ -579,6 +594,47 @@ async function queryAdminUsersWithStats(params: {
     .from(users)
     .where(whereClause);
 
+  const booksReadExpr = sql<number>`(
+    SELECT COUNT(DISTINCT completed.book_id)::int
+    FROM (
+      SELECT ${readingHistory.bookId} AS book_id
+      FROM ${readingHistory}
+      WHERE ${readingHistory.userId} = users.id
+      UNION
+      SELECT ${readingProgress.bookId} AS book_id
+      FROM ${readingProgress}
+      WHERE ${readingProgress.userId} = users.id
+        AND ${readingProgress.progress} >= 100
+    ) completed
+  )`;
+  const clubsJoinedExpr = sql<number>`(
+    SELECT COUNT(DISTINCT "club_members"."club_id")::int
+    FROM ${clubMembers}
+    LEFT JOIN ${clubs} member_clubs ON member_clubs.id = "club_members"."club_id"
+    WHERE "club_members"."user_id" = users.id
+      AND "club_members"."is_active" = true
+      AND ("club_members"."role" != 'owner' OR member_clubs.owner_id IS DISTINCT FROM users.id)
+  )`;
+  const clubsCreatedExpr = sql<number>`(
+    SELECT COUNT(*)::int
+    FROM ${clubs}
+    WHERE ${clubs.ownerId} = users.id
+  )`;
+  const sortBy = params.sortBy ?? 'created_at';
+  const sortDirection = params.sortDirection ?? 'desc';
+  const sortColumn = {
+    created_at: users.createdAt,
+    last_active: users.lastActivityAt,
+    username: users.username,
+    email: users.email,
+    role: users.role,
+    status: users.status,
+    books_read: booksReadExpr,
+    clubs_created: clubsCreatedExpr,
+    clubs_joined: clubsJoinedExpr,
+  }[sortBy];
+  const orderBy = sortDirection === 'asc' ? asc(sortColumn) : desc(sortColumn);
+
   const baseUsersQuery = db
     .select({
       id: users.id,
@@ -588,23 +644,9 @@ async function queryAdminUsersWithStats(params: {
       status: users.status,
       createdAt: users.createdAt,
       lastActivityAt: users.lastActivityAt,
-      booksRead: sql<number>`(
-        SELECT COUNT(*)::int
-        FROM ${personalBooks}
-        WHERE ${personalBooks.userId} = ${users.id}
-          AND ${personalBooks.isDeleted} = false
-      )`,
-      clubsJoined: sql<number>`(
-        SELECT COUNT(*)::int
-        FROM ${clubMembers}
-        WHERE ${clubMembers.userId} = ${users.id}
-          AND ${clubMembers.isActive} = true
-      )`,
-      clubsCreated: sql<number>`(
-        SELECT COUNT(*)::int
-        FROM ${clubs}
-        WHERE ${clubs.ownerId} = ${users.id}
-      )`,
+      booksRead: booksReadExpr,
+      clubsJoined: clubsJoinedExpr,
+      clubsCreated: clubsCreatedExpr,
       canCreateReaderLedClubs: sql<boolean>`EXISTS (
         SELECT 1
         FROM user_profiles p
@@ -614,7 +656,7 @@ async function queryAdminUsersWithStats(params: {
     })
     .from(users)
     .where(whereClause)
-    .orderBy(desc(users.createdAt));
+    .orderBy(orderBy, desc(users.createdAt));
 
   const rows = typeof params.limit === 'number' && typeof params.offset === 'number'
     ? await baseUsersQuery.limit(params.limit).offset(params.offset)
@@ -638,6 +680,7 @@ router.get('/users', jwtAuth, requireAdmin, async (req, res) => {
     const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
     const role = typeof req.query.role === 'string' ? req.query.role : undefined;
     const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+    const sort = parseAdminUserSort(req.query);
     const { page, limit, offset } = parseAdminPagination(req.query.page, req.query.limit);
 
     const conditions = buildAdminUsersWhere({
@@ -647,7 +690,7 @@ router.get('/users', jwtAuth, requireAdmin, async (req, res) => {
       includeDeleted: false,
     });
 
-    const result = await queryAdminUsersWithStats({ conditions, limit, offset });
+    const result = await queryAdminUsersWithStats({ conditions, limit, offset, ...sort });
 
     res.json({
       users: result.users,
@@ -1185,12 +1228,13 @@ router.delete('/users/:id/permanent', jwtAuth, requireFullAdmin, async (req, res
 // Получить список удаленных пользователей
 router.get('/users/deleted', jwtAuth, requireAdmin, async (req, res) => {
   try {
+    const sort = parseAdminUserSort(req.query);
     const conditions = buildAdminUsersWhere({
       includeDeleted: true,
       status: 'deleted',
     });
 
-    const result = await queryAdminUsersWithStats({ conditions });
+    const result = await queryAdminUsersWithStats({ conditions, ...sort });
     res.json({ users: result.users });
   } catch (error) {
     console.error('Error fetching deleted users:', error);
@@ -2201,11 +2245,34 @@ router.delete('/books/:id', jwtAuth, requireAdmin, async (req, res) => {
 
 // ==== CLUB MANAGEMENT ====
 
+type AdminClubSortKey = 'created_at' | 'name' | 'book_title' | 'creator' | 'status' | 'participants' | 'max_participants' | 'visibility';
+type AdminClubSortDirection = 'asc' | 'desc';
+type AdminClubGroupKey = 'none' | 'status' | 'visibility';
+
+function parseAdminClubSort(query: express.Request['query']): {
+  sortBy: AdminClubSortKey;
+  sortDirection: AdminClubSortDirection;
+  groupBy: AdminClubGroupKey;
+} {
+  const sortBy = typeof query.sortBy === 'string' ? query.sortBy : 'created_at';
+  const sortDirection = query.sortDirection === 'asc' ? 'asc' : 'desc';
+  const groupBy = typeof query.groupBy === 'string' ? query.groupBy : 'none';
+
+  return {
+    sortBy: ['created_at', 'name', 'book_title', 'creator', 'status', 'participants', 'max_participants', 'visibility'].includes(sortBy)
+      ? sortBy as AdminClubSortKey
+      : 'created_at',
+    sortDirection,
+    groupBy: ['none', 'status', 'visibility'].includes(groupBy) ? groupBy as AdminClubGroupKey : 'none',
+  };
+}
+
 // Получить список всех клубов
 router.get('/clubs', jwtAuth, requireAdmin, async (req, res) => {
   try {
     const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
     const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+    const sort = parseAdminClubSort(req.query);
     const { page, limit, offset } = parseAdminPagination(req.query.page, req.query.limit);
 
     const conditions: SQL<unknown>[] = [];
@@ -2225,6 +2292,35 @@ router.get('/clubs', jwtAuth, requireAdmin, async (req, res) => {
     } else {
       whereClause = and(...conditions) as SQL<unknown>;
     }
+
+    const currentParticipantsExpr = sql<number>`(
+      SELECT COUNT(*)::int
+      FROM ${clubMembers}
+      WHERE ${clubMembers.clubId} = ${clubs.id}
+        AND ${clubMembers.isActive} = true
+    )`;
+    const bookTitleExpr = sql<string>`COALESCE(${books.title}, ${clubBooks.title}, '')`;
+    const visibilityExpr = sql<number>`CASE WHEN ${clubs.isPrivate} THEN 1 ELSE 0 END`;
+    const sortColumn = {
+      created_at: clubs.createdAt,
+      name: clubs.title,
+      book_title: bookTitleExpr,
+      creator: users.username,
+      status: clubs.status,
+      participants: currentParticipantsExpr,
+      max_participants: clubs.maxMembers,
+      visibility: visibilityExpr,
+    }[sort.sortBy];
+    const groupColumn = {
+      none: undefined,
+      status: clubs.status,
+      visibility: visibilityExpr,
+    }[sort.groupBy];
+    const orderBy = [
+      ...(groupColumn ? [asc(groupColumn)] : []),
+      sort.sortDirection === 'asc' ? asc(sortColumn) : desc(sortColumn),
+      desc(clubs.createdAt),
+    ];
 
     const [totalRows, rows] = await Promise.all([
       db
@@ -2247,19 +2343,14 @@ router.get('/clubs', jwtAuth, requireAdmin, async (req, res) => {
           maxParticipants: clubs.maxMembers,
           readingSchedule: clubs.schedule,
           isPrivate: clubs.isPrivate,
-          currentParticipants: sql<number>`(
-            SELECT COUNT(*)::int
-            FROM ${clubMembers}
-            WHERE ${clubMembers.clubId} = ${clubs.id}
-              AND ${clubMembers.isActive} = true
-          )`,
+          currentParticipants: currentParticipantsExpr,
         })
         .from(clubs)
         .leftJoin(users, eq(clubs.ownerId, users.id))
         .leftJoin(books, eq(clubs.bookId, books.id))
         .leftJoin(clubBooks, eq(clubs.bookId, clubBooks.id))
         .where(whereClause)
-        .orderBy(desc(clubs.popularityScore), desc(clubs.createdAt))
+        .orderBy(...orderBy)
         .limit(limit)
         .offset(offset),
     ]);
@@ -2949,11 +3040,91 @@ router.put('/security-settings', jwtAuth, requireFullAdmin, async (req, res) => 
 
 // ==== SYSTEM SETTINGS ====
 
+type GeneralSettingsPayload = {
+  registrationEnabled: boolean;
+  maintenanceMode: boolean;
+  maintenanceReason: string;
+  maintenanceUntil: string;
+  maintenanceMessage: string;
+};
+
+async function getGeneralSettings(): Promise<GeneralSettingsPayload> {
+  const rows = await storage.getSettingsByCategory('general');
+  const values = new Map(rows.map((row) => [row.key, row.value ?? '']));
+
+  return {
+    registrationEnabled: values.get('general.registration_enabled') !== 'false',
+    maintenanceMode: values.get('general.maintenance_mode') === 'true',
+    maintenanceReason: values.get('general.maintenance_reason') || '',
+    maintenanceUntil: values.get('general.maintenance_until') || '',
+    maintenanceMessage: values.get('general.maintenance_message') || '',
+  };
+}
+
+function normalizeGeneralSettingsInput(input: unknown): GeneralSettingsPayload {
+  const body = input && typeof input === 'object' ? input as Record<string, unknown> : {};
+  const text = (key: string, fallback: string, max: number) => {
+    const value = typeof body[key] === 'string' ? body[key].trim() : fallback;
+    return value.slice(0, max);
+  };
+
+  return {
+    registrationEnabled: body.registrationEnabled !== false,
+    maintenanceMode: body.maintenanceMode === true,
+    maintenanceReason: text('maintenanceReason', '', 180),
+    maintenanceUntil: text('maintenanceUntil', '', 80),
+    maintenanceMessage: text('maintenanceMessage', '', 1000),
+  };
+}
+
+router.get('/settings/general/public', async (_req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    res.json({ settings: await getGeneralSettings() });
+  } catch (error) {
+    console.error('Error fetching public general settings:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+router.get('/settings/general', jwtAuth, requireAdmin, async (_req, res) => {
+  try {
+    res.json({ settings: await getGeneralSettings() });
+  } catch (error) {
+    console.error('Error fetching general settings:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+router.put('/settings/general', jwtAuth, requireFullAdmin, async (req, res) => {
+  try {
+    const next = normalizeGeneralSettingsInput(req.body);
+    const entries = [
+      ['general.registration_enabled', String(next.registrationEnabled), 'Allow public registration'],
+      ['general.maintenance_mode', String(next.maintenanceMode), 'Enable maintenance overlay for non-admin users'],
+      ['general.maintenance_reason', next.maintenanceReason, 'Maintenance reason shown to users'],
+      ['general.maintenance_until', next.maintenanceUntil, 'Maintenance expected end time shown to users'],
+      ['general.maintenance_message', next.maintenanceMessage, 'Additional maintenance message shown to users'],
+    ] as const;
+
+    for (const [key, value, description] of entries) {
+      await storage.setSetting({ key, value, category: 'general', description, updatedBy: req.user!.userId });
+    }
+
+    await logAction(req, 'update_settings', 'settings', 'general', 'Updated general platform settings');
+    res.json({ success: true, settings: next });
+  } catch (error) {
+    console.error('Error saving general settings:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
 // Получить настройки системы
 router.get('/settings', jwtAuth, requireAdmin, async (req, res) => {
   try {
     const { category } = req.query;
     const settings = await storage.getSystemSettings(category as string);
+    const now = new Date();
 
     // Группируем настройки по категориям для удобного отображения
     type GroupedSettings = Record<
@@ -3008,6 +3179,42 @@ router.get('/settings', jwtAuth, requireAdmin, async (req, res) => {
       return acc;
     }, {});
 
+    if (!category || category === 'security') {
+      grouped.security ??= {};
+      grouped.security['security.max_login_attempts'] ??= {
+        value: 5,
+        type: 'number',
+        description: 'Maximum failed login attempts per 15 minutes',
+        isPublic: false,
+        updatedAt: now,
+        updatedBy: null,
+      };
+      grouped.security['security.password_min_length'] ??= {
+        value: 8,
+        type: 'number',
+        description: 'Minimum password length',
+        isPublic: false,
+        updatedAt: now,
+        updatedBy: null,
+      };
+      grouped.security['security.require_email_verification'] ??= {
+        value: true,
+        type: 'boolean',
+        description: 'Require email verification for new users',
+        isPublic: false,
+        updatedAt: now,
+        updatedBy: null,
+      };
+      grouped.security['security.require_2fa_for_admins'] ??= {
+        value: false,
+        type: 'boolean',
+        description: 'Reserved for future TOTP admin enforcement',
+        isPublic: false,
+        updatedAt: now,
+        updatedBy: null,
+      };
+    }
+
     res.json(grouped);
   } catch (error) {
     console.error('Error fetching settings:', error);
@@ -3020,11 +3227,17 @@ router.put('/settings', jwtAuth, requireFullAdmin, async (req, res) => {
   try {
     const updatedSettings = req.body;
     const results = [];
+    const normalizers: Record<string, (value: unknown) => unknown> = {
+      'security.max_login_attempts': (value) => Math.max(3, parsePositiveInt(value, 5, 20)),
+      'security.password_min_length': (value) => Math.max(8, parsePositiveInt(value, 8, 128)),
+      'security.require_2fa_for_admins': () => false,
+    };
 
     // Обновляем каждую настройку через storage
     for (const [key, value] of Object.entries(updatedSettings)) {
       try {
-        const success = await storage.updateSystemSetting(key, value, req.user!.userId);
+        const normalizedValue = normalizers[key]?.(value) ?? value;
+        const success = await storage.updateSystemSetting(key, normalizedValue, req.user!.userId);
         results.push({ key, success });
       } catch (error) {
         console.error(`Failed to update setting ${key}:`, error);

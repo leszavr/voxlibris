@@ -7,6 +7,7 @@ import { jwtAuth, requireActiveUser } from "./jwt-middleware.js";
 import { serializeAuthUser } from "./lib/client-serializers.js";
 import { getPublicBaseUrl } from "./lib/public-base-url.js";
 import { canCreateReaderLedClubForUser } from "./lib/reader-club-access.js";
+import { getRedisClient } from "./lib/redis.js";
 // insertUserSchema больше не используется: схема регистрации локальная,
 // чтобы не тащить ограничения users.username на displayName.
 
@@ -20,13 +21,92 @@ const USERNAME_REGEX = /^[A-Za-z0-9_-]{3,32}$/;
 // 2-50 chars, no leading/trailing spaces, no multiple spaces
 const DISPLAY_NAME_REGEX = /^[\p{L}\p{N}][\p{L}\p{N}_ -]{0,48}[\p{L}\p{N}]$/u;
 
-// Password validation schema
-// Допустимые символы: A-Za-z0-9 и спецсимволы ASCII (!"#$%&'()*+,-./:;<=>?@[\]^_`{|}~)
-const passwordSchema = z.string()
-  .min(8, "Пароль должен содержать минимум 8 символов")
-  .regex(/^[A-Za-z0-9!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]+$/, "Пароль может содержать только латинские буквы, цифры и спецсимволы")
-  .regex(/[A-Za-z]/, "Пароль должен содержать хотя бы одну букву")
-  .regex(/\d/, "Пароль должен содержать хотя бы одну цифру");
+const DEFAULT_MAX_LOGIN_ATTEMPTS = 5;
+const LOGIN_ATTEMPTS_WINDOW_SECONDS = 15 * 60;
+const loginAttemptFallback = new Map<string, { count: number; expiresAt: number }>();
+
+function clampInt(value: unknown, fallback: number, min: number, max: number): number {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
+
+async function getSecurityNumberSetting(key: string, fallback: number, min: number, max: number): Promise<number> {
+  const setting = await storage.getSystemSetting(key).catch(() => null);
+  return clampInt(setting?.value, fallback, min, max);
+}
+
+async function validatePasswordPolicy(password: string): Promise<string | null> {
+  const minLength = await getSecurityNumberSetting('security.password_min_length', 8, 8, 128);
+
+  if (password.length < minLength) {
+    return `Пароль должен содержать минимум ${minLength} символов`;
+  }
+  if (!/^[A-Za-z0-9!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]+$/.test(password)) {
+    return "Пароль может содержать только латинские буквы, цифры и спецсимволы";
+  }
+  if (!/[A-Za-z]/.test(password)) {
+    return "Пароль должен содержать хотя бы одну букву";
+  }
+  if (!/\d/.test(password)) {
+    return "Пароль должен содержать хотя бы одну цифру";
+  }
+
+  return null;
+}
+
+function normalizeLoginIdentifier(value: string): string {
+  return value.trim().toLowerCase().slice(0, 160);
+}
+
+function getLoginAttemptKey(req: Request, identifier: string): string {
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  return `login:${normalizeLoginIdentifier(identifier)}:${ip}`;
+}
+
+async function getLoginAttemptCount(key: string): Promise<number> {
+  const redis = await getRedisClient();
+  if (redis) {
+    const value = await redis.get(`auth-attempts:${key}`);
+    return Number.parseInt(value || '0', 10) || 0;
+  }
+
+  const item = loginAttemptFallback.get(key);
+  if (!item || item.expiresAt <= Date.now()) {
+    loginAttemptFallback.delete(key);
+    return 0;
+  }
+  return item.count;
+}
+
+async function recordFailedLoginAttempt(key: string): Promise<number> {
+  const redis = await getRedisClient();
+  if (redis) {
+    const redisKey = `auth-attempts:${key}`;
+    const count = await redis.incr(redisKey);
+    if (count === 1) {
+      await redis.expire(redisKey, LOGIN_ATTEMPTS_WINDOW_SECONDS);
+    }
+    return count;
+  }
+
+  const now = Date.now();
+  const current = loginAttemptFallback.get(key);
+  const next = current && current.expiresAt > now
+    ? { count: current.count + 1, expiresAt: current.expiresAt }
+    : { count: 1, expiresAt: now + LOGIN_ATTEMPTS_WINDOW_SECONDS * 1000 };
+  loginAttemptFallback.set(key, next);
+  return next.count;
+}
+
+async function clearFailedLoginAttempts(key: string): Promise<void> {
+  const redis = await getRedisClient();
+  if (redis) {
+    await redis.del(`auth-attempts:${key}`);
+    return;
+  }
+  loginAttemptFallback.delete(key);
+}
 
 // Registration schema with password validation
 // ВАЖНО: на фронте поле называется displayName. Для обратной совместимости
@@ -47,7 +127,7 @@ const registerSchema = z.object({
     .trim()
     .toLowerCase()
     .regex(EMAIL_REGEX, "Укажите корректный email"),
-  password: passwordSchema,
+  password: z.string().min(1),
   rememberMe: z.boolean().optional(),
   invite: z.string().optional(),
 }).refine((data) => Boolean(data.displayName || data.username), {
@@ -100,12 +180,12 @@ function respondToLoginError(error: unknown, res: Response): Response {
 // Reset password schema
 const resetPasswordSchema = z.object({
   token: z.string().min(1),
-  password: passwordSchema,
+  password: z.string().min(1),
 });
 
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, "Текущий пароль обязателен"),
-  newPassword: passwordSchema,
+  newPassword: z.string().min(1),
 });
 
 // Валидация и обработка приглашения при регистрации
@@ -164,6 +244,14 @@ export function setupAuthRoutes(app: Express): void {
   // Registration endpoint
   app.post("/api/auth/register", async (req: Request, res: Response) => {
     try {
+      const registrationEnabled = await storage.getSetting('general.registration_enabled');
+      if (registrationEnabled?.value === 'false') {
+        return res.status(403).json({
+          message: 'Регистрация временно закрыта',
+          code: 'REGISTRATION_DISABLED',
+        });
+      }
+
       const validation = registerSchema.safeParse(req.body);
       
       if (!validation.success) {
@@ -179,6 +267,14 @@ export function setupAuthRoutes(app: Express): void {
       const displayName = (validatedData.displayName ?? validatedData.username ?? '').trim();
       const { rememberMe = false } = validation.data;
       const inviteToken = (validation.data.invite || req.query.invite) as string | undefined;
+
+      const passwordError = await validatePasswordPolicy(password);
+      if (passwordError) {
+        return res.status(400).json({
+          message: passwordError,
+          code: "PASSWORD_POLICY_FAILED",
+        });
+      }
 
       if (!displayName) {
         return res.status(400).json({
@@ -273,13 +369,32 @@ export function setupAuthRoutes(app: Express): void {
         });
       }
 
+      const maxAttempts = await getSecurityNumberSetting(
+        'security.max_login_attempts',
+        DEFAULT_MAX_LOGIN_ATTEMPTS,
+        3,
+        20
+      );
+      const attemptKey = getLoginAttemptKey(req, emailOrUsername);
+      const currentAttempts = await getLoginAttemptCount(attemptKey);
+
+      if (currentAttempts >= maxAttempts) {
+        return res.status(429).json({
+          message: `Слишком много неверных попыток входа. Повторите через ${Math.ceil(LOGIN_ATTEMPTS_WINDOW_SECONDS / 60)} минут.`,
+          code: "LOGIN_ATTEMPTS_LIMIT",
+        });
+      }
+
       const authResult = await authService.authenticate(emailOrUsername, password, rememberMe);
       
       if (!authResult) {
+        await recordFailedLoginAttempt(attemptKey);
         return res.status(401).json({ 
           message: "Неверные данные для входа" 
         });
       }
+
+      await clearFailedLoginAttempts(attemptKey);
 
       // Set tokens as httpOnly cookies
       // accessToken доступен JS для WebSocket и client-side проверок
@@ -365,6 +480,15 @@ export function setupAuthRoutes(app: Express): void {
       }
 
       const { token, password } = validation.data;
+      const passwordError = await validatePasswordPolicy(password);
+      if (passwordError) {
+        return res.status(400).json({
+          success: false,
+          message: passwordError,
+          code: "PASSWORD_POLICY_FAILED",
+        });
+      }
+
       const result = await authService.resetPassword(token, password);
 
       if (result.success) {
@@ -530,6 +654,14 @@ export function setupAuthRoutes(app: Express): void {
       }
 
       const { currentPassword, newPassword } = validation.data;
+      const passwordError = await validatePasswordPolicy(newPassword);
+      if (passwordError) {
+        return res.status(400).json({
+          message: passwordError,
+          code: "PASSWORD_POLICY_FAILED",
+        });
+      }
+
       if (currentPassword === newPassword) {
         return res.status(400).json({
           message: "Новый пароль должен отличаться от текущего",

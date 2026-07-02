@@ -2940,6 +2940,17 @@ export const commerceRenewalReminders = pgTable('commerce_renewal_reminders', {
   userIdx: index('commerce_renewal_reminders_user_idx').on(table.userId, table.sentAt),
 }));
 
+export const commerceFinancialResetLog = pgTable('commerce_financial_reset_log', {
+  id: varchar('id').primaryKey().default(sql`gen_random_uuid()`),
+  singletonKey: integer('singleton_key').notNull().default(1),
+  executedBy: varchar('executed_by').notNull().references(() => users.id, { onDelete: 'restrict' }),
+  confirmationPhrase: text('confirmation_phrase').notNull(),
+  summary: jsonb('summary').notNull().default(sql`'{}'::jsonb`),
+  executedAt: timestamp('executed_at').notNull().default(sql`now()`),
+}, (table) => ({
+  onceIdx: uniqueIndex('commerce_financial_reset_once_idx').on(table.singletonKey),
+}));
+
 export type PaymentProviderConfig = typeof paymentProviders.$inferSelect;
 export type InsertPaymentProviderConfig = typeof paymentProviders.$inferInsert;
 export type CommerceProduct = typeof commerceProducts.$inferSelect;
@@ -2972,3 +2983,5 @@ export type CommerceLedgerEntry = typeof commerceLedgerEntries.$inferSelect;
 export type InsertCommerceLedgerEntry = typeof commerceLedgerEntries.$inferInsert;
 export type CommerceRenewalReminder = typeof commerceRenewalReminders.$inferSelect;
 export type InsertCommerceRenewalReminder = typeof commerceRenewalReminders.$inferInsert;
+export type CommerceFinancialResetLog = typeof commerceFinancialResetLog.$inferSelect;
+export type InsertCommerceFinancialResetLog = typeof commerceFinancialResetLog.$inferInsert;
