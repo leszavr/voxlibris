@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, uniqueIndex, index } from "drizzle-orm/pg-core";
-import { users, clubs } from "./core";
+import { users, clubs } from "./core.js";
 
 
 export type PaymentProviderCode = 'yookassa';

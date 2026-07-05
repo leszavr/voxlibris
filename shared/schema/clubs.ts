@@ -2,8 +2,8 @@ import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, uniqueIndex, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { users, books, clubs, readingSessions } from "./core";
-import { clubReadingStatus, sessionReactions, sessionQuestions, sessionAnalytics } from "./reader";
+import { users, books, clubs, readingSessions } from "./core.js";
+import { clubReadingStatus, sessionReactions, sessionQuestions, sessionAnalytics } from "./reader.js";
 
 
 // ============================================

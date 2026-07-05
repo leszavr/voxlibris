@@ -2,8 +2,8 @@ import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, integer, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { users, clubBooksLibrary, books, bookContent, clubs, User, Book, Club, readingSessions } from "./core";
-import { ReadingSession, UserProfile, SessionListener, clubBooks, ClubBook } from "./core";
+import { users, clubBooksLibrary, books, bookContent, clubs, User, Book, Club, readingSessions } from "./core.js";
+import { ReadingSession, UserProfile, SessionListener, clubBooks, ClubBook } from "./core.js";
 
 
 // Extended types for frontend

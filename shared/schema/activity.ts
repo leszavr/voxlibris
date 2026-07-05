@@ -2,12 +2,12 @@ import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, integer, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { users, User, Book, Club, ReadingSession } from "./core";
-import { sessionReactions, sessionQuestions, sessionAnalytics } from "./reader";
-import { clubMonetization, readerEarnings, listenerPayments, clubSubscriptions, calendarSubscriptionTokens, readingSchedule, sessionRecordings, readerQualityRatings, GuestBookFormat, GuestBookModerationStatus } from "./clubs";
-import { guestAccounts, guestBooks, guestReadingPositions, guestAnalytics, insertGuestAccountSchema, insertGuestBookSchema, updateGuestBookSchema, insertGuestReadingPositionSchema, updateGuestReadingPositionSchema, insertGuestAnalyticsSchema } from "./clubs";
-import { insertSessionReactionSchema, insertSessionQuestionSchema, updateSessionQuestionSchema, insertSessionAnalyticsSchema, insertClubMonetizationSchema, insertReaderEarningSchema, insertListenerPaymentSchema, insertClubSubscriptionSchema, insertReadingScheduleSchema, insertSessionRecordingSchema } from "./clubs";
-import { insertReaderQualityRatingSchema, ClubReadingStatus } from "./clubs";
+import { users, User, Book, Club, ReadingSession } from "./core.js";
+import { sessionReactions, sessionQuestions, sessionAnalytics } from "./reader.js";
+import { clubMonetization, readerEarnings, listenerPayments, clubSubscriptions, calendarSubscriptionTokens, readingSchedule, sessionRecordings, readerQualityRatings, GuestBookFormat, GuestBookModerationStatus } from "./clubs.js";
+import { guestAccounts, guestBooks, guestReadingPositions, guestAnalytics, insertGuestAccountSchema, insertGuestBookSchema, updateGuestBookSchema, insertGuestReadingPositionSchema, updateGuestReadingPositionSchema, insertGuestAnalyticsSchema } from "./clubs.js";
+import { insertSessionReactionSchema, insertSessionQuestionSchema, updateSessionQuestionSchema, insertSessionAnalyticsSchema, insertClubMonetizationSchema, insertReaderEarningSchema, insertListenerPaymentSchema, insertClubSubscriptionSchema, insertReadingScheduleSchema, insertSessionRecordingSchema } from "./clubs.js";
+import { insertReaderQualityRatingSchema, ClubReadingStatus } from "./clubs.js";
 
 export type SessionReaction = typeof sessionReactions.$inferSelect;
 export type InsertSessionReaction = z.infer<typeof insertSessionReactionSchema>;
