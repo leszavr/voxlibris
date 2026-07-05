@@ -51,8 +51,16 @@ bash ../xlibris-manager.sh build
 ## Рекомендуемый порядок
 
 ```bash
+# 1. Автоматическое развертывание (все фазы)
 bash 11-deployment/scripts/deploy.sh all
+
+# 2. Запуск приложения через менеджер
+bash ../xlibris-manager.sh start
+
+# 3. Проверка статуса
 bash ../xlibris-manager.sh status
+
+# 4. Создание суперадмина
 bash 11-deployment/scripts/create-superadmin.sh
 ```
 
@@ -61,6 +69,12 @@ bash 11-deployment/scripts/create-superadmin.sh
 ```text
 http://localhost:3000
 ```
+
+## Важные замечания
+
+1. **verdaccio исключён** из обязательного деплоя — это резервный сервис для локальной npm-registry
+2. **xlibris-manager.sh** — основной инструмент управления после деплоя
+3. Скрипт `deploy.sh` автоматически генерирует безопасные ключи для JWT, сессий и MASTER_KEY
 
 ## Почему deploy и create-superadmin не объединены
 

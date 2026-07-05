@@ -271,8 +271,9 @@ clean_docker_environment() {
 # Environment Setup
 # ─────────────────────────────────────────────────────────────────────────
 
-generate_base64_secret() {
-    openssl rand -base64 64
+generate_safe_secret() {
+    # Генерируем безопасный base64 secret без специальных символов для sed
+    openssl rand -base64 48 | tr -dc 'A-Za-z0-9'
 }
 
 generate_hex_secret() {
@@ -291,46 +292,50 @@ setup_environment() {
     
     log_info "Создание .env файла..."
     
-    # Генерация секретных ключей
-    local jwt_secret=$(generate_base64_secret)
-    local jwt_refresh=$(generate_base64_secret)
-    local session_secret=$(generate_base64_secret)
+    # Генерация безопасных секретных ключей
+    local jwt_secret=$(generate_safe_secret)
+    local jwt_refresh=$(generate_safe_secret)
+    local session_secret=$(generate_safe_secret)
     local master_key=$(generate_hex_secret)
     
     cat > "$PROJECT_DIR/.env" <<EOF
+# ==============================================
 # VoxLibris Platform — Development Environment
+# ==============================================
+
+# Application Environment
 NODE_ENV=development
 PORT=5000
 
-# Database
-DATABASE_URL=postgresql://xlibris:xlibris_dev@xlibris-postgres:5432/xlibris
+# Database Configuration (Docker)
+DATABASE_URL=postgresql://xlibris:xlibris_dev@localhost:5432/xlibris
 
-# Security Keys
+# Security Keys - Generated for deployment
 JWT_SECRET=$jwt_secret
 JWT_REFRESH_SECRET=$jwt_refresh
 SESSION_SECRET=$session_secret
 MASTER_KEY=$master_key
 
-# S3/MinIO
-S3_ENDPOINT=http://xlibris-minio:9000
+# S3-Compatible Storage Configuration (Docker MinIO)
+S3_ENDPOINT=http://localhost:9000
 S3_ACCESS_KEY=minioadmin
 S3_SECRET_KEY=minioadmin123
 S3_BUCKET=voxlibris
 S3_REGION=us-east-1
 
-# MinIO
+# MinIO Root Credentials
 MINIO_ROOT_USER=minioadmin
 MINIO_ROOT_PASSWORD=minioadmin123
 
-# URLs
+# Public URL
 APP_BASE_URL=http://localhost:3000
 CLIENT_URL=http://localhost:3000
 ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5000
 
-# Redis
+# Redis Configuration (Docker)
 REDIS_PASSWORD=redis_dev
-REDIS_URL=redis://:redis_dev@xlibris-redis:6379
-RATE_LIMIT_REDIS_URL=redis://:redis_dev@xlibris-redis:6379
+REDIS_URL=redis://:redis_dev@localhost:6379
+RATE_LIMIT_REDIS_URL=redis://:redis_dev@localhost:6379
 RATE_LIMIT_REDIS_ENABLED=true
 RATE_LIMIT_REDIS_PREFIX=rl:voxlibris
 
@@ -349,10 +354,10 @@ MAX_BOOK_CHAPTERS=1500
 MAX_FB2_XML_MB=20
 MAX_FB2_COVER_MB=10
 
-# Icecast
+# Icecast Configuration
 ICECAST_SOURCE_PASSWORD=dev_source_pass
 ICECAST_ADMIN_PASSWORD=dev_admin_pass
-ICECAST_INTERNAL_HOST=xlibris-icecast
+ICECAST_INTERNAL_HOST=localhost
 ICECAST_INTERNAL_PORT=8000
 ICECAST_PUBLIC_URL=http://localhost:8000
 VITE_ICECAST_PUBLIC_URL=http://localhost:8000
@@ -361,7 +366,7 @@ STUDIO_STREAM_INTENT_TTL_SECONDS=1800
 LIVE_SESSION_TTL_SECONDS=90
 
 # Guest access defaults
-ENABLE_GUEST_ACCESS=false
+ENABLE_GUEST_ACCESS=true
 MAX_ACTIVE_UPLOAD_SESSIONS=200
 MAX_ACTIVE_UPLOAD_SESSIONS_PER_USER=5
 UPLOAD_SESSION_TTL_MINUTES=20

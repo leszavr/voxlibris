@@ -82,19 +82,19 @@ services:
       start_period: 10s
       retries: 3
 
-  # Local Verdaccio Registry (резервный)
-  verdaccio:
-    image: verdaccio/verdaccio:latest
-    container_name: xlibris-verdaccio
-    restart: unless-stopped
-    volumes:
-      - verdaccio_data:/verdaccio/storage
-      - verdaccio_conf:/verdaccio/conf
-    ports:
-      - "4873:4873"
-    environment:
-      VERDACCIO_USER_UID: 100
-      VERDACCIO_USER_GID: 101
+  # Local Verdaccio Registry (резервный) - ОТКЛЮЧЕН для начального деплоя
+  # verdaccio:
+  #   image: verdaccio/verdaccio:latest
+  #   container_name: xlibris-verdaccio
+  #   restart: unless-stopped
+  #   volumes:
+  #     - verdaccio_data:/verdaccio/storage
+  #     - verdaccio_conf:/verdaccio/conf
+  #   ports:
+  #     - "4873:4873"
+  #   environment:
+  #     VERDACCIO_USER_UID: 100
+  #     VERDACCIO_USER_GID: 101
 
 volumes:
   postgres_data:
@@ -103,10 +103,10 @@ volumes:
     driver: local
   minio_data:
     driver: local
-  verdaccio_data:
-    driver: local
-  verdaccio_conf:
-    driver: local
+  # verdaccio_data:
+  #   driver: local
+  # verdaccio_conf:
+  #   driver: local
 
 networks:
   default:
