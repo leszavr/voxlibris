@@ -6,6 +6,7 @@ import type { ReadingSchedule, ScheduleStatus } from '../../shared/schema.js';
 import { generateCalendar } from '../services/icalendar-service.js';
 import { sendIcs } from '../lib/calendar-response.js';
 import { getPublicBaseUrl } from '../lib/public-base-url.js';
+import { getLegacyClubSchedules } from '../services/legacy-schedule-calendar.js';
 
 const router = Router();
 
@@ -22,6 +23,15 @@ async function getScheduleOrRespond(
     return null;
   }
   return schedule;
+}
+
+async function findLegacySchedule(scheduleId: string): Promise<{ schedule: ReadingSchedule; club: NonNullable<Awaited<ReturnType<typeof repositories.clubs.getClub>>> } | null> {
+  const clubs = await repositories.clubs.getClubs();
+  for (const club of clubs) {
+    const schedule = getLegacyClubSchedules(club).find((item) => item.id === scheduleId);
+    if (schedule) return { schedule, club };
+  }
+  return null;
 }
 
 function ensureScheduleCreator(
@@ -233,8 +243,16 @@ router.get('/:scheduleId/calendar.ics', async (req: Request, res: Response) => {
   try {
     const userId = req.user?.id;
     const { scheduleId } = req.params;
-    const schedule = await getScheduleOrRespond(res, scheduleId);
-    if (!schedule) return;
+    const schedule = await repositories.readingSchedule.getSchedule(scheduleId);
+    if (!schedule) {
+      const legacy = await findLegacySchedule(scheduleId);
+      if (!legacy) return res.status(404).json({ success: false, error: 'Schedule not found' });
+      if (legacy.club.isPrivate) {
+        const membership = userId ? await storage.getUserClubMembership(legacy.club.id, userId) : null;
+        if (!membership?.isActive) return res.status(403).json({ success: false, error: 'Forbidden' });
+      }
+      return sendIcs(res, generateCalendar([legacy.schedule], { club: legacy.club, baseUrl: await getPublicBaseUrl() }), `voxlibris-schedule-${legacy.schedule.id}.ics`);
+    }
 
     const club = await repositories.clubs.getClub(schedule.clubId);
     if (!club) return res.status(404).json({ success: false, error: 'Club not found' });
