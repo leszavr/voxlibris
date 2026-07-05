@@ -66,9 +66,10 @@ log_section() {
 # ─────────────────────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-DEPLOY_LOG="${PROJECT_DIR}/.tmp/deploy-$(date +%Y%m%d-%H%M%S).log"
-mkdir -p "${PROJECT_DIR}/.tmp"
+DEPLOY_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_DIR="$(cd "$DEPLOY_DIR/../.." && pwd)"
+DEPLOY_LOG="${DEPLOY_DIR}/.tmp/deploy-$(date +%Y%m%d-%H%M%S).log"
+mkdir -p "${DEPLOY_DIR}/.tmp"
 
 # ─────────────────────────────────────────────────────────────────────────
 # Функции проверки
@@ -240,13 +241,22 @@ clean_docker_environment() {
         return 0
     fi
     
-    log_warning "⚠️  ВНИМАНИЕ: Будут удалены все контейнеры, образы и тома!"
-    read -p "Продолжить? (yes/no): " confirmation
+    # Проверка флага --force для автоматического режима
+    local force="${DEPLOY_FORCE:-false}"
     
-    if [[ "$confirmation" != "yes" ]]; then
-        log_info "Очистка отменена"
-        return 0
+    if [[ "$force" != "true" ]]; then
+        log_warning "⚠️  ВНИМАНИЕ: Будут удалены все контейнеры, образы и тома!"
+        read -p "Продолжить? (yes/no): " confirmation
+        
+        if [[ "$confirmation" != "yes" ]]; then
+            log_info "Очистка отменена"
+            return 0
+        fi
+    else
+        log_info "Автоматический режим: очистка Docker без подтверждения"
     fi
+    
+    cd "$PROJECT_DIR"
     
     log_info "Остановка контейнеров..."
     docker compose down -v 2>/dev/null || true
@@ -410,9 +420,8 @@ install_dependencies() {
 build_docker_images() {
     log_section "ФАЗА 5: Сборка Docker образов"
     
-    cd "$PROJECT_DIR"
-    
     log_info "Сборка Icecast образа..."
+    cd "$PROJECT_DIR"
     docker compose build icecast 2>&1 | tee -a "$DEPLOY_LOG"
     
     log_success "Docker образы собраны"
@@ -459,17 +468,16 @@ start_docker_services() {
 migrate_database() {
     log_section "ФАЗА 7: Миграция БД"
     
-    cd "$PROJECT_DIR"
-    
     log_info "Ожидание готовности PostgreSQL (10 сек)..."
     sleep 10
     
-    if [[ ! -f "script/run-all-migrations.ts" ]]; then
-        log_error "Не найден script/run-all-migrations.ts"
+    if [[ ! -f "$PROJECT_DIR/script/run-all-migrations.ts" ]]; then
+        log_error "Не найден $PROJECT_DIR/script/run-all-migrations.ts"
         exit 1
     fi
 
     log_info "Применение миграций через script/run-all-migrations.ts..."
+    cd "$PROJECT_DIR"
     pnpm exec tsx script/run-all-migrations.ts 2>&1 | tee -a "$DEPLOY_LOG"
     
     log_success "Миграции БД применены"
@@ -541,6 +549,62 @@ show_summary() {
 }
 
 # ─────────────────────────────────────────────────────────────────────────
+# Start Application
+# ─────────────────────────────────────────────────────────────────────────
+
+start_application() {
+    log_section "ФАЗА 9: Запуск приложения"
+    
+    log_info "Запуск Backend и Frontend через xlibris-manager.sh..."
+    cd "$PROJECT_DIR"
+    
+    # Запускаем менеджер в фоновом режиме
+    bash xlibris-manager.sh start &
+    local manager_pid=$!
+    
+    log_info "Ожидание запуска приложения (60 сек)..."
+    local elapsed=0
+    while [[ $elapsed -lt 60 ]]; do
+        if nc -zw1 localhost 5000 2>/dev/null && nc -zw1 localhost 3000 2>/dev/null; then
+            log_success "Приложение запущено"
+            return 0
+        fi
+        sleep 5
+        elapsed=$((elapsed + 5))
+    done
+    
+    log_warning "Таймаут ожидания приложения, проверяем статус..."
+    bash xlibris-manager.sh status 2>&1 || true
+}
+
+# ─────────────────────────────────────────────────────────────────────────
+# Create Superadmin
+# ─────────────────────────────────────────────────────────────────────────
+
+create_superadmin() {
+    log_section "ФАЗА 10: Создание суперадмина"
+    
+    log_info "Запуск скрипта создания суперадмина..."
+    log_info "Введите данные для создания суперадмина:"
+    cd "$SCRIPT_DIR"
+    
+    if [[ ! -f "create-superadmin.sh" ]]; then
+        log_error "Скрипт create-superadmin.sh не найден"
+        return 1
+    fi
+    
+    # Всегда интерактивный режим - пользователь вводит данные
+    bash create-superadmin.sh
+    
+    if [[ $? -eq 0 ]]; then
+        log_success "Суперадмин создан"
+    else
+        log_error "Ошибка создания суперадмина"
+        return 1
+    fi
+}
+
+# ─────────────────────────────────────────────────────────────────────────
 # Main Execution
 # ─────────────────────────────────────────────────────────────────────────
 
@@ -548,6 +612,11 @@ main() {
     local phase="${1:-all}"
     
     log_section "Voxlibris Platform — Automated Deployment v1.0"
+    
+    # Автоматический режим для фазы all
+    if [[ "$phase" == "all" ]]; then
+        export DEPLOY_FORCE=true
+    fi
     
     case "$phase" in
         verify-env)
@@ -577,6 +646,12 @@ main() {
         migrate-db)
             migrate_database
             ;;
+        start-app)
+            start_application
+            ;;
+        create-superadmin)
+            create_superadmin
+            ;;
         verify-all)
             verify_all_services
             ;;
@@ -590,7 +665,8 @@ main() {
             build_docker_images
             start_docker_services
             migrate_database
-            verify_all_services
+            start_application
+            create_superadmin
             show_summary
             ;;
     esac
