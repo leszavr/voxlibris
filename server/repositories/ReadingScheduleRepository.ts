@@ -1,5 +1,5 @@
 import { BaseRepository } from './BaseRepository.js';
-import { eq, and, desc, gt, sql } from 'drizzle-orm';
+import { eq, and, desc, gt, gte, sql } from 'drizzle-orm';
 import { readingSchedule, type ReadingSchedule, type InsertReadingSchedule } from '../../shared/schema.js';
 
 /**
@@ -112,6 +112,21 @@ export class ReadingScheduleRepository extends BaseRepository {
     }
   }
 
+  async getCalendarFeedSchedules(clubId: string, limit = 200): Promise<ReadingSchedule[]> {
+    try {
+      const from = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      return await this.db
+        .select()
+        .from(readingSchedule)
+        .where(and(eq(readingSchedule.clubId, clubId), gte(readingSchedule.scheduledStart, from)))
+        .orderBy(readingSchedule.scheduledStart)
+        .limit(limit);
+    } catch (error) {
+      this.logError('getCalendarFeedSchedules', error);
+      throw new Error('Failed to get calendar feed schedules');
+    }
+  }
+
   /**
    * Получить расписания, для которых прямо сейчас нужно отправить напоминание
    */
@@ -186,6 +201,7 @@ export class ReadingScheduleRepository extends BaseRepository {
         .update(readingSchedule)
         .set({
           ...updates,
+          calendarSequence: sql`${readingSchedule.calendarSequence} + 1`,
           updatedAt: new Date()
         })
         .where(eq(readingSchedule.id, id))
@@ -211,6 +227,7 @@ export class ReadingScheduleRepository extends BaseRepository {
           status,
           actualStart: status === 'in_progress' ? new Date() : undefined,
           actualEnd: status === 'completed' || status === 'cancelled' ? new Date() : undefined,
+          calendarSequence: sql`${readingSchedule.calendarSequence} + 1`,
           updatedAt: new Date()
         })
         .where(eq(readingSchedule.id, id))

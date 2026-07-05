@@ -192,9 +192,9 @@ await scheduler.manualCheckSchedule();
 
 ## Документация
 
-- [API Уведомлений](./routes/README_NOTIFICATIONS_API.md)
-- [API Расписания](./routes/README_SCHEDULE_API.md)
-- [EmailService](./services/email-service.ts)
+- [API Уведомлений](../05-server/api-routes/README_NOTIFICATIONS_API.md)
+- [API Расписания](../05-server/api-routes/README_SCHEDULE_API.md)
+- [EmailService](../../server/services/email-service.ts)
 
 ---
 

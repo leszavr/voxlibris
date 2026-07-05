@@ -7,15 +7,15 @@ import { getMobileAnalyticsContext } from "@/lib/mobile-analytics";
 import { resolveStudioPrepView } from "@/lib/studio-prep-view";
 import { resolveReaderStudioViewState } from "@/lib/reader-studio-view";
 import { ClubContentRenderer } from "./club/ClubContentRenderer";
-import { ClubReaderControls } from "./club/ClubReaderControls";
-import { ClubChapterList } from "./club/ClubNavigation";
-import { BookmarksPanel } from "./BookmarksPanel";
+import { ClubReaderPanels } from "./club/ClubReaderPanels";
+import { ClubReaderTopBar } from "./club/ClubReaderTopBar";
+import { normalizeReaderChapter, type ClubReaderInnerProps, type PendingScrollRestore } from "./club/club-reader-utils";
 import { LatestPositionPrompt } from "./LatestPositionPrompt";
-import { LoadingIndicator, ChapterLoadingIndicator, ContentLoadingSkeleton } from "./LoadingIndicator";
+import { ChapterLoadingIndicator, ContentLoadingSkeleton } from "./LoadingIndicator";
 import { useKeyboardShortcuts, readerShortcuts } from "./useKeyboardShortcuts";
 import { KeyboardHelp } from "./KeyboardHelp";
 import { Button } from "../ui/button";
-import { AlertCircle, List, Settings, ArrowLeft, HelpCircle } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import type { Bookmark as BookmarkType } from "@shared/schema";
 import {
   createReaderProgressPayload,
@@ -72,20 +72,6 @@ export function ClubReader({ clubId: propClubId, bookId: propBookId, params }: R
   }
 
   return <ClubReaderInner clubId={clubId} bookId={bookId} />;
-}
-
-interface ClubReaderInnerProps {
-  clubId: string;
-  bookId: string;
-}
-
-interface PendingScrollRestore {
-  chapter: number;
-  positionRaw: string;
-}
-
-function normalizeReaderChapter(chapter: number | null | undefined): number {
-  return typeof chapter === "number" && Number.isFinite(chapter) && chapter > 0 ? chapter : 1;
 }
 
 function ClubReaderInner({ clubId, bookId }: Readonly<ClubReaderInnerProps>) {
@@ -748,176 +734,38 @@ function ClubReaderInner({ clubId, bookId }: Readonly<ClubReaderInnerProps>) {
         />
       )}
 
-      {/* Верхняя панель */}
-      <section className={cn("border-b bg-background relative z-50 p-2 sm:p-4 shrink-0 transition-[filter,opacity] duration-300", readerBlockedByStudioDevice && "pointer-events-none select-none blur-sm opacity-60")}>
-        <div className="flex items-center justify-between gap-2 min-w-0">
-          <div className="flex items-center gap-2 min-w-0">
-            <Button variant="outline" size="sm" onClick={() => globalThis.history.back()}>
-              <ArrowLeft className="w-4 h-4" />
-            </Button>
-            <div className="min-w-0">
-              <h1 className="text-sm sm:text-lg font-semibold truncate">{bookData.title}</h1>
-              <p className="text-xs text-muted-foreground hidden sm:block">Клубное чтение</p>
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={readerBlockedByStudioDevice}
-              onClick={() => {
-                const nextOpen = !tocOpen;
-                closeAllPanels();
-                setTocOpen(nextOpen);
-              }}
-              className="w-8 h-8 sm:w-10 sm:h-10 p-0 shrink-0"
-            >
-              <List className="w-4 h-4" />
-            </Button>
-            
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={readerBlockedByStudioDevice}
-              onClick={() => {
-                const nextOpen = !settingsOpen;
-                closeAllPanels();
-                setSettingsOpen(nextOpen);
-              }}
-              title="Настройки чтения"
-              className="w-8 h-8 sm:w-10 sm:h-10 p-0 shrink-0"
-            >
-              <Settings className="w-4 h-4" />
-            </Button>
-            
-            {/* Закладки временно скрыты до включения функционала в UI
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setBookmarksOpen(!bookmarksOpen)}
-              title="Закладки"
-              className="w-8 h-8 sm:w-10 sm:h-10 p-0"
-            >
-              <Bookmark className="w-4 h-4" />
-            </Button>
-            */}
-            
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={readerBlockedByStudioDevice}
-              onClick={() => setHelpOpen(true)}
-              title="Горячие клавиши"
-              className="w-8 h-8 sm:w-10 sm:h-10 p-0 hidden"
-            >
-              <HelpCircle className="w-4 h-4" />
-            </Button>
-          </div>
-        </div>
-        </section>
+      <ClubReaderTopBar
+        title={bookData.title}
+        readerBlockedByStudioDevice={readerBlockedByStudioDevice}
+        tocOpen={tocOpen}
+        settingsOpen={settingsOpen}
+        closeAllPanels={closeAllPanels}
+        setTocOpen={setTocOpen}
+        setSettingsOpen={setSettingsOpen}
+        setHelpOpen={setHelpOpen}
+      />
 
-      {/* Модальное окно настроек */}
-      {settingsOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-end pointer-events-none"
-        >
-          <div
-            ref={settingsPanelRef}
-            className="bg-background border rounded-lg shadow-xl w-[85vw] max-w-[320px] sm:max-w-md max-h-[80vh] overflow-y-auto pointer-events-auto mr-2 sm:mr-4"
-          >
-            <div className="sticky top-0 bg-background border-b p-3 sm:p-4 flex items-center justify-between">
-              <h2 className="text-sm sm:text-lg font-semibold">Настройки</h2>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setSettingsOpen(false)}
-              >
-                ✕
-              </Button>
-            </div>
-            <div className="p-3 sm:p-4">
-              <ClubReaderControls
-                settings={settings}
-                onSettingsChange={updateSettingsWithAnchor}
-                onResetSettings={resetSettingsWithAnchor}
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Модальное окно оглавления */}
-      {tocOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-end pointer-events-none"
-        >
-          <div
-            ref={tocPanelRef}
-            className="bg-background border rounded-lg shadow-xl w-[85vw] max-w-[320px] sm:max-w-md max-h-[80vh] overflow-y-auto pointer-events-auto mr-2 sm:mr-4 flex flex-col"
-          >
-            <div className="sticky top-0 bg-background border-b p-3 sm:p-4 flex items-center justify-between flex-none">
-              <h2 className="text-sm sm:text-lg font-semibold">Оглавление</h2>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setTocOpen(false)}
-              >
-                ✕
-              </Button>
-            </div>
-            <div className="p-3 sm:p-4 flex-1">
-              <ClubChapterList
-                chapters={chapters}
-                currentChapter={currentChapter || 1}
-                onChapterSelect={(chapter) => {
-                  changeChapter(chapter);
-                  setTocOpen(false);
-                }}
-                isVisible={tocOpen}
-                onClose={() => setTocOpen(false)}
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Модальное окно закладок */}
-      {bookmarksOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-end pointer-events-none"
-        >
-          <div
-            ref={bookmarksPanelRef}
-            className="bg-background border rounded-lg shadow-xl w-[85vw] max-w-[320px] sm:max-w-md max-h-[80vh] overflow-y-auto pointer-events-auto mr-2 sm:mr-4 flex flex-col"
-          >
-            <div className="sticky top-0 bg-background border-b p-3 sm:p-4 flex items-center justify-between flex-none">
-              <h2 className="text-sm sm:text-lg font-semibold">Закладки</h2>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setBookmarksOpen(false)}
-              >
-                ✕
-              </Button>
-            </div>
-            <div className="p-3 sm:p-4 flex-1">
-              {bookmarksLoading ? (
-                <LoadingIndicator message="Загрузка..." />
-              ) : (
-                <BookmarksPanel
-                  bookId={bookId}
-                  bookmarks={normalizedBookmarks}
-                  onNavigateToBookmark={(bookmark) => {
-                    navigateToBookmark(bookmark);
-                    setBookmarksOpen(false);
-                  }}
-                />
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <ClubReaderPanels
+        settingsOpen={settingsOpen}
+        tocOpen={tocOpen}
+        bookmarksOpen={bookmarksOpen}
+        settingsPanelRef={settingsPanelRef}
+        tocPanelRef={tocPanelRef}
+        bookmarksPanelRef={bookmarksPanelRef}
+        settings={settings}
+        updateSettingsWithAnchor={updateSettingsWithAnchor}
+        resetSettingsWithAnchor={resetSettingsWithAnchor}
+        chapters={chapters}
+        currentChapter={currentChapter}
+        changeChapter={changeChapter}
+        setSettingsOpen={setSettingsOpen}
+        setTocOpen={setTocOpen}
+        setBookmarksOpen={setBookmarksOpen}
+        bookmarksLoading={bookmarksLoading}
+        bookId={bookId}
+        normalizedBookmarks={normalizedBookmarks}
+        navigateToBookmark={navigateToBookmark}
+      />
 
       <EmbeddedClubStudioShell
         isOpen={studioOpen}

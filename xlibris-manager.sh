@@ -170,7 +170,7 @@ stop_local_dev_processes() {
 
 # Запуск локального YooKassa emulator для UI/dev checkout flow
 start_yookassa_emulator() {
-    local emulator_script="$SCRIPT_DIR/.tmp/yooksssa_emulator/server.mjs"
+    local emulator_script="$SCRIPT_DIR/infra/yooksssa_emulator/server.mjs"
 
     if [ ! -f "$emulator_script" ]; then
         print_log "$YELLOW" "WARN" "⚠️  YooKassa emulator не найден: $emulator_script"

@@ -3,17 +3,8 @@ import { useState } from "react";
 import { apiRequest } from "@/lib/queryClient";
 import { AdminLayout } from "../../components/layout/AdminLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Button } from "../../components/ui/button";
-import { Loader2, TrendingUp, Users, BookOpen, Clock, ArrowUpDown, Download, CreditCard } from "lucide-react";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "../../components/ui/table";
+import { Loader2, Download } from "lucide-react";
 import {
   LineChart,
   Line,
@@ -23,123 +14,45 @@ import {
   Tooltip,
   ResponsiveContainer,
   BarChart,
-  FunnelChart,
-  Funnel,
   PieChart,
   Pie,
   Cell,
 } from 'recharts';
 import { Bar } from 'recharts/es6/cartesian/Bar';
 import { BookAnalyticsModal } from "@/components/admin/BookAnalyticsModal";
-import { ActivityHeatmap } from "@/components/admin/ActivityHeatmap";
 import { ClubAnalyticsModal } from "@/components/admin/ClubAnalyticsModal";
 import { UserAnalyticsModal } from "@/components/admin/UserAnalyticsModal";
-
-interface AnalyticsStats {
-  period: string;
-  totalEvents: number;
-  eventsByType: Array<{ eventType: string; count: number }>;
-  topBooks: Array<{ bookId: string; title: string; author: string; events: number }>;
-  topUsers: Array<{ userId: string; username: string; events: number }>;
-  clubStats: Array<{
-    clubId: string;
-    clubTitle: string;
-    totalEvents: number;
-    joinEvents: number;
-    leaveEvents: number;
-    totalSessions: number;
-    activeMembers: number;
-    lastActivityAt: string | null;
-  }>;
-  avgReadingTime: number;
-  eventsTrend: Array<{ date: string; count: number }>;
-  funnel: Array<{ stage: string; count: number; percentage: number }>;
-}
-
-interface HeatmapResponse {
-  period: string;
-  heatmap: Array<{ day: number; hour: number; count: number }>;
-}
-
-interface DeviceStatsResponse {
-  period: string;
-  totalUserAgentEvents: number;
-  deviceType: {
-    desktop: number;
-    mobile: number;
-    tablet: number;
-    unknown: number;
-  };
-  browsers: Array<{ name: string; count: number }>;
-  os: Array<{ name: string; count: number }>;
-}
-
-interface MobilePwaStatsResponse {
-  period: string;
-  totalTrackedEvents: number;
-  summary: {
-    pwaInstall: number;
-    pwaHomescreenOpen: number;
-    mobileReaderOpen: number;
-    mobileClubJoin: number;
-  };
-  eventsByType: Array<{ eventType: string; count: number }>;
-  deviceTypes: Array<{ name: string; count: number }>;
-  os: Array<{ name: string; count: number }>;
-  displayModes: Array<{ name: string; count: number }>;
-  sources: Array<{ name: string; count: number }>;
-  trend: Array<{
-    date: string;
-    total: number;
-    pwaInstall: number;
-    pwaHomescreenOpen: number;
-    mobileReaderOpen: number;
-    mobileClubJoin: number;
-  }>;
-}
-
-interface CommerceDashboardResponse {
-  revenue: number;
-  mrr: number;
-  arr: number;
-  churn: number;
-  conversion: number;
-  recent: Array<{ id: string; status: string; amountRub: number; createdAt: string }>;
-}
-
-interface UserJourneyStatsResponse {
-  period: string;
-  usersWithFirstRead: number;
-  usersWithoutRead: number;
-  avgDaysToFirstRead: number;
-  distribution: Array<{ daysRange: string; count: number }>;
-}
-
-interface BookAnalyticsExportDetails {
-  dailyEvents: Array<{
-    date: string;
-    [key: string]: string | number;
-  }>;
-}
-
-interface HeatmapCellExportDetails {
-  eventsByType: Array<{ eventType: string; count: number }>;
-}
-
-interface UserAnalyticsExportDetails {
-  totalBooksStarted: number;
-  totalBooksCompleted: number;
-  totalReadingTime: number;
-  avgSessionDuration: number;
-  eventsByType: Array<{ eventType: string; count: number }>;
-}
-
-type ClubSortKey = 'totalEvents' | 'activeMembers' | 'totalSessions' | 'lastActivityAt';
-
-interface CsvColumn<T> {
-  header: string;
-  accessor: (item: T, index: number) => string | number | null | undefined;
-}
+import {
+  dayLabelsLong,
+  detailedEventTypes,
+  deviceTypeColors,
+  deviceTypeLabels,
+  displayModeColors,
+  displayModeLabels,
+  eventTypeLabels,
+  funnelStageColors,
+  funnelStageLabels,
+  mobilePwaEventLabels,
+  mobilePwaSourceLabels,
+} from "./analytics/constants";
+import type {
+  AnalyticsStats,
+  BookAnalyticsExportDetails,
+  ClubSortKey,
+  CommerceDashboardResponse,
+  DeviceStatsResponse,
+  HeatmapCellExportDetails,
+  HeatmapResponse,
+  MobilePwaStatsResponse,
+  UserAnalyticsExportDetails,
+  UserJourneyStatsResponse,
+} from "./analytics/types";
+import { AnalyticsLists } from "./analytics/lists";
+import { AnalyticsEmptyState } from "./analytics/empty-state";
+import { HeatmapCard, ReadingFunnelCard } from "./analytics/funnel-heatmap";
+import { AnalyticsPageHeader } from "./analytics/page-header";
+import { CommerceSummary, MainMetricCards, MetrikaCard } from "./analytics/summary-cards";
+import { buildEventsMap, buildEventsMapFromDailyEvents, downloadCsv } from "./analytics/utils";
 
 export default function AdminAnalyticsPage() {
   const [period, setPeriod] = useState('7d');
@@ -199,44 +112,7 @@ export default function AdminAnalyticsPage() {
     queryFn: async () => apiRequest<CommerceDashboardResponse>("/api/commerce/admin/financial-dashboard"),
   });
 
-  const commerceSummary = (
-    <Card className="mb-8">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <CreditCard className="h-5 w-5" />
-          Коммерция
-        </CardTitle>
-        <CardDescription>Финансовые показатели RF Commerce Core за последние 30 дней</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {isCommerceLoading ? (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Загрузка коммерческих метрик...
-          </div>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-4">
-            <div className="rounded-lg border p-4">
-              <div className="text-sm text-muted-foreground">Выручка</div>
-              <div className="text-2xl font-bold">{(commerceDashboard?.revenue ?? 0).toLocaleString()} ₽</div>
-            </div>
-            <div className="rounded-lg border p-4">
-              <div className="text-sm text-muted-foreground">MRR</div>
-              <div className="text-2xl font-bold">{(commerceDashboard?.mrr ?? 0).toLocaleString()} ₽</div>
-            </div>
-            <div className="rounded-lg border p-4">
-              <div className="text-sm text-muted-foreground">ARR</div>
-              <div className="text-2xl font-bold">{(commerceDashboard?.arr ?? 0).toLocaleString()} ₽</div>
-            </div>
-            <div className="rounded-lg border p-4">
-              <div className="text-sm text-muted-foreground">Churn</div>
-              <div className="text-2xl font-bold">{Math.round((commerceDashboard?.churn ?? 0) * 100)}%</div>
-            </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
+  const commerceSummary = <CommerceSummary commerceDashboard={commerceDashboard} isCommerceLoading={isCommerceLoading} />;
 
   if (isLoading) {
     return (
@@ -253,131 +129,20 @@ export default function AdminAnalyticsPage() {
     return (
       <AdminLayout>
         <div className="container mx-auto py-8 px-4">
-          <div className="flex justify-between items-center mb-8">
-            <div>
-              <h1 className="text-3xl font-bold">Аналитика платформы</h1>
-              <p className="text-muted-foreground mt-2">
-                Статистика активности пользователей и популярности контента
-              </p>
-            </div>
-            
-            <Select value={period} onValueChange={setPeriod}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Выберите период" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="7d">Последние 7 дней</SelectItem>
-                <SelectItem value="30d">Последние 30 дней</SelectItem>
-                <SelectItem value="90d">Последние 90 дней</SelectItem>
-                <SelectItem value="all">За всё время</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          <AnalyticsPageHeader period={period} setPeriod={setPeriod} />
 
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-16">
-              <TrendingUp className="h-16 w-16 text-muted-foreground mb-4" />
-              <h2 className="text-2xl font-semibold mb-2">Нет данных за выбранный период</h2>
-              <p className="text-muted-foreground text-center max-w-md mb-6">
-                Данные аналитики собираются автоматически при чтении книг в ридере.
-              </p>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 max-w-2xl">
-                <h3 className="font-semibold text-blue-900 mb-3">Как начать собирать статистику:</h3>
-                <ol className="text-sm text-blue-800 space-y-2 list-decimal list-inside">
-                  <li>Загрузите книгу в личную библиотеку или клуб</li>
-                  <li>Откройте книгу через Reader (кнопка "Читать")</li>
-                  <li>Начните чтение - события будут отправляться автоматически каждые 30 секунд</li>
-                  <li>Вернитесь на эту страницу через минуту - данные появятся</li>
-                </ol>
-                <div className="mt-4 pt-4 border-t border-blue-200">
-                  <p className="text-xs text-blue-700">
-                    <strong>Отслеживаемые события:</strong> открытие книги, начало/завершение главы, 
-                    сессии чтения, создание закладок и заметок
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <AnalyticsEmptyState />
           {commerceSummary}
         </div>
       </AdminLayout>
     );
   }
 
-  // Форматируем данные для графиков
-  const eventTypeLabels: Record<string, string> = {
-    book_open: 'Открытие книги',
-    chapter_start: 'Начало главы',
-    chapter_complete: 'Завершение главы',
-    reading_session: 'Сессия чтения',
-    bookmark_create: 'Закладка',
-    note_create: 'Заметка',
-    book_complete: 'Завершение книги',
-    club_join: 'Вступление в клуб',
-    club_leave: 'Выход из клуба',
-    book_upload: 'Загрузка книги',
-    pwa_install: 'Установка PWA',
-    pwa_homescreen_open: 'Запуск с домашнего экрана',
-  };
-
-  const mobilePwaEventLabels: Record<string, string> = {
-    pwa_install: 'Установка PWA',
-    pwa_homescreen_open: 'Запуск с домашнего экрана',
-    mobile_reader_open: 'Открытие ридера с мобильного',
-    mobile_club_join: 'Вступление в клуб с мобильного',
-  };
-
-  const funnelStageLabels: Record<string, string> = {
-    book_open: 'Открыли книгу',
-    reading_session: 'Начали читать',
-    chapter_complete: 'Завершили главу',
-    book_complete: 'Завершили книгу',
-  };
-
-  const funnelStageColors: Record<string, string> = {
-    book_open: '#3b82f6', // blue-500
-    reading_session: '#8b5cf6', // violet-500
-    chapter_complete: '#f59e0b', // amber-500
-    book_complete: '#10b981', // emerald-500
-  };
-
   const funnelData = (stats?.funnel || []).map((item) => ({
     ...item,
     name: funnelStageLabels[item.stage] || item.stage,
     fill: funnelStageColors[item.stage] || '#8884d8',
   }));
-
-  const deviceTypeLabels: Record<string, string> = {
-    desktop: 'Desktop',
-    mobile: 'Mobile',
-    tablet: 'Tablet',
-    unknown: 'Unknown',
-  };
-
-  const deviceTypeColors: Record<string, string> = {
-    desktop: '#2563eb',
-    mobile: '#16a34a',
-    tablet: '#f59e0b',
-    unknown: '#64748b',
-  };
-
-  const displayModeLabels: Record<string, string> = {
-    browser: 'Браузер',
-    standalone: 'Установленное приложение',
-  };
-
-  const displayModeColors: Record<string, string> = {
-    browser: '#0284c7',
-    standalone: '#7c3aed',
-  };
-
-  const mobilePwaSourceLabels: Record<string, string> = {
-    install_prompt: 'Install prompt',
-    homescreen: 'Домашний экран',
-    personal_reader: 'Личный ридер',
-    club_reader: 'Клубный ридер',
-    invite_accept: 'Принятие приглашения',
-  };
 
   const deviceTypeData = Object.entries(deviceStats?.deviceType || {}).map(([name, count]) => ({
     name,
@@ -407,16 +172,6 @@ export default function AdminAnalyticsPage() {
       ? Math.round(((userJourneyStats?.usersWithFirstRead || 0) / userJourneyTotalUsers) * 1000) / 10
       : 0;
   const userJourneyDropoffRate = userJourneyTotalUsers > 0 ? Math.max(0, 100 - userJourneyConversionRate) : 0;
-
-  const dayLabelsLong = [
-    'Воскресенье',
-    'Понедельник',
-    'Вторник',
-    'Среда',
-    'Четверг',
-    'Пятница',
-    'Суббота',
-  ];
 
   const toggleClubSort = (key: ClubSortKey) => {
     if (clubSortKey === key) {
@@ -456,67 +211,9 @@ export default function AdminAnalyticsPage() {
     return items;
   })();
 
-  const formatTime = (seconds: number) => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    if (hours > 0) {
-      return `${hours}ч ${minutes}м`;
-    }
-    return `${minutes}м`;
-  };
-
-  const escapeCsvValue = (value: string | number | null | undefined) => {
-    if (value === null || value === undefined) return '';
-    const str = String(value);
-    const escaped = str.replace(/"/g, '""');
-    if (/[;"\n\r]/.test(escaped)) {
-      return `"${escaped}"`;
-    }
-    return escaped;
-  };
-
-  const downloadCsv = <T,>(filename: string, rows: T[], columns: CsvColumn<T>[]) => {
-    const headerLine = columns.map((col) => escapeCsvValue(col.header)).join(';');
-    const lines = rows.map((row, index) =>
-      columns.map((col) => escapeCsvValue(col.accessor(row, index))).join(';')
-    );
-    const csv = [headerLine, ...lines].join('\n');
-
-    const blob = new Blob(['\ufeff', csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
   const getCsvFileName = (baseName: string) => {
     const date = new Date().toISOString().slice(0, 10);
     return `${baseName}-${period}-${date}.csv`;
-  };
-
-  const detailedEventTypes = Object.keys(eventTypeLabels);
-
-  const buildEventsMap = (items: Array<{ eventType: string; count: number }>) => {
-    const map: Record<string, number> = {};
-    for (const item of items) {
-      map[item.eventType] = Number(item.count) || 0;
-    }
-    return map;
-  };
-
-  const buildEventsMapFromDailyEvents = (dailyEvents: BookAnalyticsExportDetails['dailyEvents']) => {
-    const map: Record<string, number> = {};
-    for (const day of dailyEvents) {
-      for (const [key, value] of Object.entries(day)) {
-        if (key === 'date') continue;
-        map[key] = (map[key] || 0) + (Number(value) || 0);
-      }
-    }
-    return map;
   };
 
   const exportTopBooksCsv = async () => {
@@ -815,193 +512,21 @@ export default function AdminAnalyticsPage() {
   return (
     <AdminLayout>
         <div className="container mx-auto py-8 px-4">
-          <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-3xl font-bold">Аналитика платформы</h1>
-            <p className="text-muted-foreground mt-2">
-              Статистика активности пользователей и популярности контента
-            </p>
-          </div>
-          
-          <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Выберите период" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="7d">Последние 7 дней</SelectItem>
-              <SelectItem value="30d">Последние 30 дней</SelectItem>
-              <SelectItem value="90d">Последние 90 дней</SelectItem>
-              <SelectItem value="all">За всё время</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+          <AnalyticsPageHeader period={period} setPeriod={setPeriod} />
 
           {commerceSummary}
 
-          {/* Основные метрики */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Всего событий</CardTitle>
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats?.totalEvents.toLocaleString()}</div>
-              <p className="text-xs text-muted-foreground mt-1">
-                События пользователей
-              </p>
-            </CardContent>
-          </Card>
+          <MainMetricCards stats={stats} />
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Активных пользователей</CardTitle>
-              <Users className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats?.topUsers.length || 0}</div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Пользователи с активностью
-              </p>
-            </CardContent>
-          </Card>
+          <ReadingFunnelCard funnelData={funnelData} exportFunnelCsv={exportFunnelCsv} />
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Популярных книг</CardTitle>
-              <BookOpen className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats?.topBooks.length || 0}</div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Книги с активностью
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Среднее время чтения</CardTitle>
-              <Clock className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {stats ? formatTime(stats.avgReadingTime) : '-'}
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                За сессию
-              </p>
-            </CardContent>
-          </Card>
-          </div>
-
-          {/* Воронка конверсии чтения */}
-          <Card className="mb-8">
-            <CardHeader className="flex flex-row items-start justify-between gap-4">
-              <div>
-                <CardTitle>Воронка чтения</CardTitle>
-                <CardDescription>
-                  Конверсия по уникальным парам читатель+книга за выбранный период
-                </CardDescription>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="shrink-0"
-                onClick={exportFunnelCsv}
-                disabled={!funnelData.length}
-              >
-                <Download className="h-4 w-4" />
-                Скачать CSV
-              </Button>
-            </CardHeader>
-            <CardContent>
-              {funnelData.length === 0 || funnelData.every((s) => s.count === 0) ? (
-                <div className="text-sm text-muted-foreground">
-                  Недостаточно данных для построения воронки за выбранный период.
-                </div>
-              ) : (
-                <div className="grid gap-6 lg:grid-cols-2">
-                  <div className="h-[320px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <FunnelChart>
-                        <Tooltip
-                          formatter={(value?: number, _name?: string, props?: { payload?: { percentage?: number } }) => {
-                            const count = typeof value === 'number' ? value : 0;
-                            const percentage = props?.payload?.percentage ?? 0;
-                            return [`${count.toLocaleString()} • ${percentage}%`, 'Конверсия'];
-                          }}
-                        />
-                        <Funnel dataKey="count" data={funnelData} isAnimationActive />
-                      </FunnelChart>
-                    </ResponsiveContainer>
-                  </div>
-  
-                  <div className="space-y-3">
-                    {funnelData.map((stage, idx) => (
-                      <div
-                        key={stage.stage}
-                        className="flex items-center justify-between rounded-lg border p-3"
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span
-                            className="h-2.5 w-2.5 rounded-full shrink-0"
-                            style={{ backgroundColor: stage.fill }}
-                          />
-                          <div className="min-w-0">
-                            <div className="font-medium truncate">{stage.name}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {idx === 0 ? 'База' : `${stage.percentage}% от предыдущего шага`}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="text-right ml-4">
-                          <div className="font-semibold tabular-nums">
-                            {stage.count.toLocaleString()}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Heatmap активности */}
-          <Card className="mb-8">
-            <CardHeader className="flex flex-row items-start justify-between gap-4">
-              <div>
-                <CardTitle>Heatmap активности</CardTitle>
-                <CardDescription>
-                  Распределение событий по дням недели и часам
-                </CardDescription>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="shrink-0"
-                onClick={() => void exportHeatmapCsv()}
-                disabled={!heatmapStats?.heatmap?.some((cell) => cell.count > 0) || isExportingHeatmap}
-              >
-                {isExportingHeatmap ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Download className="h-4 w-4" />
-                )}
-                {isExportingHeatmap ? 'Формируем CSV...' : 'Скачать CSV'}
-              </Button>
-            </CardHeader>
-            <CardContent>
-              {isHeatmapLoading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                </div>
-              ) : (
-                <ActivityHeatmap data={heatmapStats?.heatmap || []} period={period} />
-              )}
-            </CardContent>
-          </Card>
+          <HeatmapCard
+            heatmapStats={heatmapStats}
+            period={period}
+            isHeatmapLoading={isHeatmapLoading}
+            isExportingHeatmap={isExportingHeatmap}
+            exportHeatmapCsv={() => void exportHeatmapCsv()}
+          />
 
           {/* Статистика устройств и платформ */}
           <Card className="mb-8">
@@ -1411,244 +936,34 @@ export default function AdminAnalyticsPage() {
           </CardContent>
         </Card>
 
-        <div className="grid gap-8 md:grid-cols-2">
-          {/* Топ книг */}
-          <Card>
-            <CardHeader className="flex flex-row items-start justify-between gap-4">
-              <div>
-                <CardTitle>Топ-10 популярных книг</CardTitle>
-                <CardDescription>По количеству событий (кликните для деталей)</CardDescription>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="shrink-0"
-                onClick={() => void exportTopBooksCsv()}
-                disabled={!stats?.topBooks?.length || isExportingTopBooks}
-              >
-                {isExportingTopBooks ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Download className="h-4 w-4" />
-                )}
-                {isExportingTopBooks ? 'Формируем CSV...' : 'Скачать CSV'}
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {stats?.topBooks.map((book, index) => (
-                  <button 
-                    key={book.bookId} 
-                    className="flex items-center p-2 rounded-lg hover:bg-muted/50 transition-colors text-left w-full"
-                    onClick={() => {
-                      setSelectedBookId(book.bookId);
-                      setSelectedBookTitle(book.title);
-                      setSelectedBookAuthor(book.author);
-                      setBookModalOpen(true);
-                    }}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold truncate text-primary">{book.title}</div>
-                      {book.author && (
-                        <div className="text-sm text-muted-foreground truncate">{book.author}</div>
-                      )}
-                      <div className="text-xs text-muted-foreground mt-1">
-                        #{index + 1} • {book.events} событий
-                      </div>
-                    </div>
-                  </button>
-                ))}
-                {(!stats?.topBooks || stats.topBooks.length === 0) && (
-                  <div className="text-center text-muted-foreground py-8">
-                    Нет данных за выбранный период
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+        <AnalyticsLists
+          stats={stats}
+          sortedClubStats={sortedClubStats}
+          isExportingTopBooks={isExportingTopBooks}
+          isExportingTopUsers={isExportingTopUsers}
+          exportTopBooksCsv={() => void exportTopBooksCsv()}
+          exportTopUsersCsv={() => void exportTopUsersCsv()}
+          exportClubStatsCsv={exportClubStatsCsv}
+          toggleClubSort={toggleClubSort}
+          openBookDetails={(book) => {
+            setSelectedBookId(book.bookId);
+            setSelectedBookTitle(book.title);
+            setSelectedBookAuthor(book.author);
+            setBookModalOpen(true);
+          }}
+          openUserDetails={(user) => {
+            setSelectedUserId(user.userId);
+            setSelectedUsername(user.username);
+            setUserModalOpen(true);
+          }}
+          openClubDetails={(club) => {
+            setSelectedClubId(club.clubId);
+            setSelectedClubTitle(club.clubTitle);
+            setClubModalOpen(true);
+          }}
+        />
 
-          {/* Топ пользователей */}
-          <Card>
-            <CardHeader className="flex flex-row items-start justify-between gap-4">
-              <div>
-                <CardTitle>Топ-10 активных пользователей</CardTitle>
-                <CardDescription>По количеству событий</CardDescription>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="shrink-0"
-                onClick={() => void exportTopUsersCsv()}
-                disabled={!stats?.topUsers?.length || isExportingTopUsers}
-              >
-                {isExportingTopUsers ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Download className="h-4 w-4" />
-                )}
-                {isExportingTopUsers ? 'Формируем CSV...' : 'Скачать CSV'}
-              </Button>
-            </CardHeader>
-            <CardContent>
-                <div className="space-y-4">
-                  {stats?.topUsers.map((user, index) => (
-                  <button
-                    key={user.userId}
-                    className="flex items-center p-2 rounded-lg hover:bg-muted/50 transition-colors text-left w-full"
-                    onClick={() => {
-                      setSelectedUserId(user.userId);
-                      setSelectedUsername(user.username);
-                      setUserModalOpen(true);
-                    }}
-                  >
-                    <div className="font-bold text-muted-foreground mr-4 w-6">
-                      #{index + 1}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium truncate text-primary">{user.username}</div>
-                    </div>
-                    <div className="text-sm font-medium ml-4">
-                      {user.events} событий
-                    </div>
-                  </button>
-                ))}
-                {(!stats?.topUsers || stats.topUsers.length === 0) && (
-                  <div className="text-center text-muted-foreground py-8">
-                    Нет данных за выбранный период
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Клубная аналитика */}
-        <Card className="mt-8">
-          <CardHeader className="flex flex-row items-start justify-between gap-4">
-            <div>
-              <CardTitle>Клубная аналитика</CardTitle>
-              <CardDescription>
-                События по клубам (вступления, выходы, сессии чтения). Кликните по строке для детализации.
-              </CardDescription>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="shrink-0"
-              onClick={exportClubStatsCsv}
-              disabled={!sortedClubStats.length}
-            >
-              <Download className="h-4 w-4" />
-              Скачать CSV
-            </Button>
-          </CardHeader>
-          <CardContent>
-            {sortedClubStats.length === 0 ? (
-              <div className="text-center text-muted-foreground py-8">
-                Нет клубной активности за выбранный период
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Клуб</TableHead>
-                    <TableHead>
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-1 hover:text-foreground"
-                        onClick={() => toggleClubSort('totalEvents')}
-                      >
-                        События
-                        <ArrowUpDown className="h-3.5 w-3.5" />
-                      </button>
-                    </TableHead>
-                    <TableHead>Вступления</TableHead>
-                    <TableHead>Выходы</TableHead>
-                    <TableHead>
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-1 hover:text-foreground"
-                        onClick={() => toggleClubSort('totalSessions')}
-                      >
-                        Сессии
-                        <ArrowUpDown className="h-3.5 w-3.5" />
-                      </button>
-                    </TableHead>
-                    <TableHead>
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-1 hover:text-foreground"
-                        onClick={() => toggleClubSort('activeMembers')}
-                      >
-                        Активные участники
-                        <ArrowUpDown className="h-3.5 w-3.5" />
-                      </button>
-                    </TableHead>
-                    <TableHead>
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-1 hover:text-foreground"
-                        onClick={() => toggleClubSort('lastActivityAt')}
-                      >
-                        Последняя активность
-                        <ArrowUpDown className="h-3.5 w-3.5" />
-                      </button>
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {sortedClubStats.map((club) => (
-                    <TableRow
-                      key={club.clubId}
-                      className="cursor-pointer"
-                      onClick={() => {
-                        setSelectedClubId(club.clubId);
-                        setSelectedClubTitle(club.clubTitle);
-                        setClubModalOpen(true);
-                      }}
-                    >
-                      <TableCell className="font-medium text-primary">{club.clubTitle}</TableCell>
-                      <TableCell className="tabular-nums">{club.totalEvents.toLocaleString()}</TableCell>
-                      <TableCell className="tabular-nums">{club.joinEvents.toLocaleString()}</TableCell>
-                      <TableCell className="tabular-nums">{club.leaveEvents.toLocaleString()}</TableCell>
-                      <TableCell className="tabular-nums">{club.totalSessions.toLocaleString()}</TableCell>
-                      <TableCell className="tabular-nums">{club.activeMembers.toLocaleString()}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {club.lastActivityAt
-                          ? new Date(club.lastActivityAt).toLocaleString('ru-RU')
-                          : 'Нет активности'}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Яндекс.Метрика */}
-        <Card className="mt-8">
-          <CardHeader>
-            <CardTitle>Яндекс.Метрика</CardTitle>
-            <CardDescription>
-              Полная веб-аналитика с Вебвизором и картой кликов
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground mb-4">
-              Счетчик Яндекс.Метрики установлен на всех страницах сайта. 
-              Для просмотра подробной статистики перейдите в личный кабинет Метрики.
-            </p>
-            <a 
-              href="https://metrika.yandex.ru/dashboard?id=106167747" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
-            >
-              Открыть Яндекс.Метрику
-            </a>
-          </CardContent>
-        </Card>
+        <MetrikaCard />
       </div>
 
       {/* Модалка детализации книги */}

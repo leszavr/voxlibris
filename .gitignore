@@ -73,6 +73,7 @@ lerna-debug.log*
 # Temporary files and folders
 *.tmp
 *.temp
+shared/schema.ts.bak
 .tmp/
 .temp/
 .cache/

@@ -3,6 +3,7 @@ import { storage } from '../repositories/index.js';
 import { logger } from '../lib/logger.js';
 import type { ReadingSchedule } from '../../shared/schema.js';
 import { pushService, type PushNotificationType } from './push-service.js';
+import { getPublicBaseUrl } from '../lib/public-base-url.js';
 
 /**
  * NotificationService — сервис уведомлений для VoxLibris Studio
@@ -370,6 +371,8 @@ class NotificationService {
     userId: string,
     email: string
   ): Promise<boolean> {
+    const club = await storage.getClub(schedule.clubId);
+    const calendarUrl = club && !club.isPrivate ? `${await getPublicBaseUrl()}/api/schedule/${schedule.id}/calendar.ics` : undefined;
     const payload: NotificationPayload = {
       type: 'session_start',
       userId,
@@ -380,6 +383,7 @@ class NotificationService {
         scheduleId: schedule.id,
         clubId: schedule.clubId,
         bookId: schedule.bookId,
+        calendarUrl,
       },
     };
 
@@ -478,6 +482,7 @@ class NotificationService {
    * HTML для уведомления о начале сессии
    */
   private getSessionStartHtml(payload: NotificationPayload): string {
+    const calendarUrl = typeof payload.data?.calendarUrl === 'string' ? payload.data.calendarUrl : null;
     return `
 <!DOCTYPE html>
 <html lang="ru">
@@ -496,7 +501,7 @@ class NotificationService {
   <div class="card">
     <h1>🎙️ ${payload.title}</h1>
     <p>${payload.message}</p>
-    <a href="#" class="btn">Подключиться к сессии</a>
+    ${calendarUrl ? `<a href="${calendarUrl}" class="btn">Добавить в календарь</a>` : ''}
   </div>
 </body>
 </html>

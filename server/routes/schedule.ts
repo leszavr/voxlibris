@@ -3,6 +3,9 @@ import { repositories, storage } from '../repositories/index.js';
 import { logger } from '../lib/logger.js';
 import { notificationService } from '../services/notification-service.js';
 import type { ReadingSchedule, ScheduleStatus } from '../../shared/schema.js';
+import { generateCalendar } from '../services/icalendar-service.js';
+import { sendIcs } from '../lib/calendar-response.js';
+import { getPublicBaseUrl } from '../lib/public-base-url.js';
 
 const router = Router();
 
@@ -223,6 +226,28 @@ router.get('/:scheduleId', async (req: Request, res: Response) => {
       success: false,
       error: 'Failed to get schedule',
     });
+  }
+});
+
+router.get('/:scheduleId/calendar.ics', async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    const { scheduleId } = req.params;
+    const schedule = await getScheduleOrRespond(res, scheduleId);
+    if (!schedule) return;
+
+    const club = await repositories.clubs.getClub(schedule.clubId);
+    if (!club) return res.status(404).json({ success: false, error: 'Club not found' });
+    if (club.isPrivate) {
+      const membership = userId ? await storage.getUserClubMembership(club.id, userId) : null;
+      if (!membership?.isActive) return res.status(403).json({ success: false, error: 'Forbidden' });
+    }
+
+    sendIcs(res, generateCalendar([schedule], { club, baseUrl: await getPublicBaseUrl() }), `voxlibris-schedule-${schedule.id}.ics`);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error(`Error generating schedule calendar: ${errorMessage}`);
+    res.status(500).json({ success: false, error: 'Failed to generate calendar' });
   }
 });
 

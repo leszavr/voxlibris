@@ -1,8 +1,8 @@
 # Монетизация и коммерция VoxLibris
 
 **Статус:** Current  
-**Дата обновления:** 2026-06-28  
-**Версия:** 1.0
+**Дата обновления:** 2026-07-04  
+**Версия:** 1.1
 
 ## Содержание
 
@@ -38,6 +38,11 @@ VoxLibris поддерживает монетизацию через:
 ```
 ┌─────────────────┐
 │  Tariff Constructor │
+└────────┬────────┘
+         │
+┌────────▼────────┐
+│ CommerceRepository │
+│  (Data Access)     │
 └────────┬────────┘
          │
 ┌────────▼────────┐
@@ -297,6 +302,140 @@ GET /api/commerce/clubs/{clubId}/subscribers
 Authorization: Bearer {token}  // Только владелец клуба
 ```
 
+## Кошелёк чтеца (Demo)
+
+### Назначение
+
+Демонстрационный кошелёк для владельцев клубов чтецов. Показывает цепочку:
+
+```text
+платеж слушателя → ledger-начисление чтецу → баланс → демо-заявка на вывод
+```
+
+**Важно:** demo-режим не выполняет реальных выплат.
+
+### Баланс
+
+| Поле | Описание |
+|------|----------|
+| `earnedTotalKopecks` | Всего заработано |
+| `availableKopecks` | Доступно для вывода |
+| `pendingKopecks` | В ожидании |
+| `withdrawnKopecks` | Выведено (demo) |
+
+### API
+
+```http
+GET /api/v1/reader/wallet
+Authorization: Bearer {token}
+```
+
+**Response:**
+```json
+{
+  "balance": {
+    "availableKopecks": 40000,
+    "pendingKopecks": 0,
+    "withdrawnKopecks": 10000,
+    "totalEarnedKopecks": 50000
+  },
+  "history": [
+    {
+      "id": "ledger-id",
+      "clubId": "club-id",
+      "clubTitle": "Клуб чтецов",
+      "amountKopecks": 40000,
+      "status": "available",
+      "createdAt": "2026-06-29T00:00:00.000Z"
+    }
+  ]
+}
+```
+
+### Демо-вывод
+
+```http
+POST /api/v1/reader/wallet/withdraw
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "confirmDemo": true
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "withdrawal": {
+    "id": "uuid",
+    "amountKopecks": 40000,
+    "status": "demo_paid",
+    "createdAt": "2026-06-29T00:00:00.000Z",
+    "processedAt": "2026-06-29T00:00:10.000Z"
+  },
+  "message": "Демо-заявка обработана. Реальная выплата не выполнялась."
+}
+```
+
+### Статусы ledger
+
+| Статус | Описание |
+|--------|----------|
+| `available` | Доступно для вывода |
+| `withdrawn` | Выведено (demo) |
+
+## Финансовый аудит
+
+### Назначение
+
+Read-only аудит коммерческой цепочки: orders → payments → events → entitlements → ledger.
+
+### Функции
+
+| Функция | Описание |
+|---------|----------|
+| `financialAuditSummary(filters)` | Сводная статистика за период |
+| `listAuditPayments(filters)` | Список платежей |
+| `getAuditPaymentDetails(id)` | Детальная карточка платежа |
+| `listAuditOrders(filters)` | Список заказов |
+| `listAuditLedger(filters)` | Бухгалтерские проводки |
+| `listAuditEntitlements(filters)` | Выданные доступы |
+| `listProviderEvents(filters)` | События от провайдеров |
+| `listDiscrepancies(filters)` | Обнаруженные расхождения |
+
+### Типы расхождений
+
+- Платёж без заказа
+- Заказ без платежа
+- Платёж succeeded без ledger entries
+- Ledger entry без entitlement
+- И другие...
+
+## Финансовый сброс (Production)
+
+### Назначение
+
+Одноразовый сброс тестовых финансовых данных перед запуском в продакшен.
+
+### Что удаляется
+
+- Заказы, платежи, события платежей
+- Проводки, подписки, entitlements
+- Напоминания об обновлении, действия с entitlement-ами
+
+### Что архивируется
+
+- Продукты, цены, тарифные шаблоны
+- Тарифные назначения
+
+### Требования
+
+- Только первый админ может запустить
+- Требуется фраза подтверждения: `ОЧИСТИТЬ ТЕСТОВЫЕ ФИНАНСЫ И ЗАПУСТИТЬ МАГАЗИН`
+- Singleton-запись в `commerce_financial_reset_log`
+
 ## Безопасность платежей
 
 ### Валидация webhook
@@ -422,6 +561,39 @@ pnpm run test:pricing:yookassa
 - Рост chargebacks
 - Ошибки webhook > 5%
 - Проблемы с автопродлением
+
+## Реестр коммерческих фич
+
+**Файл:** `shared/commerce-feature-support.ts`
+
+Реестр поддержки коммерческих фич:
+
+| Фича | Статус | Проверка |
+|------|--------|----------|
+| `personal_library.max_books` | implemented | server_limit |
+| `personal_books.upload.enabled` | implemented | server_access |
+| `clubs.joined.max_count` | implemented | server_limit |
+| `clubs.owned.max_count` | implemented | server_limit |
+| `club.members.max_count` | implemented | server_limit |
+| `club.private.enabled` | implemented | server_access |
+| `club.books.max_count` | implemented | server_limit |
+| `reader_club_access` | implemented | server_access |
+| `personal_notes.max_count` | entitlement_only | not_enforced |
+| `recommendations.advanced.enabled` | entitlement_only | not_enforced |
+| `calendar.advanced.enabled` | entitlement_only | not_enforced |
+| `notifications.advanced.enabled` | entitlement_only | not_enforced |
+| `club.moderators.max_count` | entitlement_only | not_enforced |
+| `club.schedule.enabled` | entitlement_only | not_enforced |
+| `club.discussions.enabled` | entitlement_only | not_enforced |
+| `club.analytics.level` | entitlement_only | not_enforced |
+| `studio.live.enabled` | entitlement_only | not_enforced |
+| `studio.live.max_listener_count` | entitlement_only | not_enforced |
+| `studio.live.max_duration_minutes` | entitlement_only | not_enforced |
+| `studio.recordings.enabled` | entitlement_only | not_enforced |
+| `studio.recordings.max_count` | entitlement_only | not_enforced |
+| `studio.recordings.storage_mb` | entitlement_only | not_enforced |
+| `studio.recordings.publication.enabled` | entitlement_only | not_enforced |
+| `studio.analytics.level` | entitlement_only | not_enforced |
 
 ## Связанная документация
 

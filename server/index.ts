@@ -15,8 +15,6 @@ import { RedisStore } from "rate-limit-redis";
 import { createClient } from "redis";
 import slowDown from "express-slow-down";
 import helmet from "helmet";
-import { Server as SocketIOServer } from "socket.io";
-import jwt, { type JwtPayload } from "jsonwebtoken";
 import adminRoutes from "./admin-routes.js";
 import analyticsRoutes from "./analytics-routes.js";
 import { setupAuthRoutes } from "./auth-routes.js";
@@ -40,9 +38,9 @@ import { setupReadingSessionsHandlers } from "./websocket/reading-sessions.js";
 import { scheduler } from "./services/scheduler.js";
 import readingSessionsRoutes from "./routes/reading-sessions.js";
 import reactionsRoutes from "./routes/reactions.js";
-import { registerIO } from "./lib/socket-registry.js";
 import questionsRoutes from "./routes/questions.js";
 import scheduleRoutes from "./routes/schedule.js";
+import calendarRoutes from "./routes/calendar.js";
 import studioStreamRouter from "./routes/studio-stream.js";
 import socialRoutes from "./routes/social.js";
 import feedRoutes from "./routes/feed.js";
@@ -58,24 +56,10 @@ import { logger } from "./lib/logger.js";
 import { loadFeatureFlags } from "./lib/feature-flags.js";
 import { responseCompression } from "./lib/response-compression.js";
 import { createIcecastLiveProxy } from "./lib/icecast-live-proxy.js";
+import { formatUnknownError, logServerMessage, maskSensitiveData } from "./lib/server-log-utils.js";
+import { createMainSocketServer } from "./lib/socket-setup.js";
 
 export const app = express();
-
-function formatUnknownError(error: unknown): string {
-	if (error instanceof Error) {
-		return error.message;
-	}
-
-	if (typeof error === "string") {
-		return error;
-	}
-
-	try {
-		return JSON.stringify(error);
-	} catch {
-		return "Unknown error";
-	}
-}
 
 // Trust proxy для корректной работы rate limiting за reverse proxy (CapRover/Traefik)
 // trust proxy: 1 — trust only first hop, предотвращает spoofing от пользователей
@@ -92,117 +76,11 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
 	? process.env.ALLOWED_ORIGINS.split(",")
 	: ["http://localhost:3000"];
 
-const io = new SocketIOServer(httpServer, {
-	cors: {
-		origin: allowedOrigins,
-		methods: ["GET", "POST"],
-		credentials: true,
-	},
-	transports: ["websocket", "polling"],
-});
-registerIO(io);
-
-// Опциональная аутентификация для главного Socket.IO.
-// Не блокирует анонимных клиентов — просто декодирует JWT если он есть
-// и сохраняет userId в socket.data для DM-обработчиков.
-io.use((socket, next) => {
-	try {
-		const auth = socket.handshake.auth as Record<string, unknown> | undefined;
-		const token =
-			(typeof auth?.token === 'string' ? auth.token : undefined) ||
-			socket.handshake.headers.authorization?.replace('Bearer ', '') ||
-			/accessToken=([^;]+)/.exec(socket.handshake.headers.cookie ?? '')?.[1];
-
-		if (token) {
-			const secret = process.env.JWT_SECRET;
-			if (secret) {
-				const decoded = jwt.verify(token, secret) as JwtPayload & { userId?: string };
-				if (decoded.userId) {
-					socket.data.userId = decoded.userId;
-				}
-			}
-		}
-	} catch {
-		// Игнорируем ошибки auth — разрешаем анонимные соединения
-	}
-	next();
-});
-
-// Главный Socket.IO: пользователи могут присоединяться к своей персональной комнате
-// для получения real-time событий ленты (feed:new_event).
-// Клиент должен вызвать emit('join_user_room', userId) после подключения.
-io.on('connection', (socket) => {
-	socket.on('join_user_room', (userId: unknown) => {
-		if (typeof userId === 'string' && userId.length > 0 && userId.length < 64) {
-			void socket.join(`user:${userId}`);
-		}
-	});
-});
+const io = createMainSocketServer(httpServer, allowedOrigins);
 
 // Utility functions
 export function log(message: string, source = "express") {
-	const formattedTime = new Date().toLocaleTimeString("en-US", {
-		hour: "numeric",
-		minute: "2-digit",
-		second: "2-digit",
-		hour12: true,
-	});
-
-	logger.info(`${formattedTime} [${source}] ${message}`);
-}
-
-// Проверка чувствительных ключей
-function isSensitiveKey(key: string): boolean {
-	const lowerKey = key.toLowerCase();
-	const sensitiveKeys = ["password", "token", "secret", "apikey", "api_key", "accesstoken", "refreshtoken"];
-	return sensitiveKeys.some((sensitive) => lowerKey.includes(sensitive));
-}
-
-// Проверка ключей с большими данными
-function isLargeDataKey(key: string): boolean {
-	const lowerKey = key.toLowerCase();
-	const largeDataKeys = ["coverimage", "image", "avatar", "encryptedcontentkey"];
-	return largeDataKeys.some((large) => lowerKey.includes(large));
-}
-
-// Маскирование строковых значений
-function maskStringValue(value: string): string {
-	if (value.startsWith("data:image/") && value.length > 200) {
-		return `[Base64 image: ${value.length} bytes]`;
-	}
-	if (value.length > 1000) {
-		return `${value.substring(0, 100)}... [${value.length} chars total]`;
-	}
-	return value;
-}
-
-// Функция для маскирования чувствительных данных в логах
-function maskSensitiveData(obj: unknown): unknown {
-	if (!obj || typeof obj !== "object") return obj;
-
-	const masked: Record<string, unknown> | unknown[] = Array.isArray(obj) ? [...obj] : { ...(obj as Record<string, unknown>) };
-
-	if (Array.isArray(masked)) {
-		// Для массивов рекурсивно обработать элементы
-		return masked.map((item) => (typeof item === "object" && item !== null ? maskSensitiveData(item) : item));
-	}
-
-	// Для объектов обработать каждый ключ
-	for (const key in masked) {
-		const value = masked[key];
-
-		if (isSensitiveKey(key)) {
-			masked[key] = "***";
-		} else if (isLargeDataKey(key) && typeof value === "string" && value.length > 100) {
-			masked[key] = `[${value.length} bytes]`;
-		} else if (typeof value === "string") {
-			masked[key] = maskStringValue(value);
-		} else if (typeof value === "object" && value !== null) {
-			masked[key] = maskSensitiveData(value);
-		}
-	}
-
-	return masked;
+	logServerMessage(message, source);
 }
 
 // Security headers configuration
@@ -900,6 +778,9 @@ try {
 	// Load feature flags from database
 	// NOSONAR typescript:S7785 - await inside try-catch, not top-level
 	await loadFeatureFlags();
+
+	// Public iCalendar routes must be registered before JWT-protected /api/schedule.
+	app.use("/api", calendarRoutes);
 
 	// Регистрация основных роутов
 	await registerRoutes(httpServer, app);

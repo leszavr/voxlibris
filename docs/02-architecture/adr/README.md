@@ -4,11 +4,11 @@
 
 ## Список архитектурных решений
 
-- ADR-001: [Выбор Drizzle ORM](../../01-introduction/adr-001-drizzle-orm-choice.md) - 2026-02-15, AI Assistant
-- ADR-002: [Использование WebSocket для реального времени](../../01-introduction/adr-002-websocket-for-realtime.md) - 2026-02-15, AI Assistant
-- ADR-003: [Использование JWT для аутентификации](../../01-introduction/adr-003-jwt-authentication.md) - 2026-02-15, AI Assistant
-- ADR-004: [Выбор React в качестве фронтенд-фреймворка](../../01-introduction/adr-004-react-frontend-framework.md) - 2026-02-15, AI Assistant
-- ADR-005: [Выбор PostgreSQL в качестве базы данных](../../01-introduction/adr-005-postgresql-database.md) - 2026-02-15, AI Assistant
+- ADR-001: [Выбор Drizzle ORM](./adr-001-drizzle-orm-choice.md) - 2026-02-15, AI Assistant
+- ADR-002: [Использование WebSocket для реального времени](./adr-002-websocket-for-realtime.md) - 2026-02-15, AI Assistant
+- ADR-003: [Использование JWT для аутентификации](./adr-003-jwt-authentication.md) - 2026-02-15, AI Assistant
+- ADR-004: [Выбор React в качестве фронтенд-фреймворка](./adr-004-react-frontend-framework.md) - 2026-02-15, AI Assistant
+- ADR-005: [Выбор PostgreSQL в качестве базы данных](./adr-005-postgresql-database.md) - 2026-02-15, AI Assistant
 - ADR-006: [Архитектура системы клубов и сообществ](./adr-006-club-system-architecture.md) - 2026-02-15, AI Assistant
 - ADR-007: [Архитектура системы управления книгами](./adr-007-book-management-architecture.md) - 2026-02-15, AI Assistant
 - ADR-008: [Архитектура системы чтения и сессий](./adr-008-reading-sessions-architecture.md) - 2026-02-15, AI Assistant
@@ -21,7 +21,7 @@
 
 ## Шаблон ADR
 
-Для создания нового архитектурного решения используйте [шаблон ADR](../../01-introduction/adr-template.md).
+Для создания нового архитектурного решения используйте [шаблон ADR](./adr-template.md).
 
 ## Нумерация
 

@@ -57,6 +57,19 @@ ALTER TABLE "users" ADD COLUMN "bio" text;
 
 ## Применение миграций
 
+### Production/CapRover
+
+В production миграции применяются вручную, последовательно, через pgAdmin/psql на сервере CapRover. Автоматического запуска миграций при деплое нет.
+
+Для новых миграций обязательно:
+
+- строгая последовательная нумерация без пропусков;
+- идемпотентные операции (`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`);
+- отсутствие `DROP`, `TRUNCATE` и опасных `ALTER COLUMN TYPE` без отдельного плана;
+- проверка локально повторным применением миграции.
+
+`0060_add_calendar_integration.sql` добавляет iCalendar-интеграцию: `reading_schedule.calendar_sequence`, `calendar_subscription_tokens`, необходимые индексы и `CREATE EXTENSION IF NOT EXISTS pgcrypto` для `gen_random_uuid()`.
+
 ### К команде
 
 ```bash

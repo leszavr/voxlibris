@@ -338,8 +338,8 @@ CREATE POLICY audit_users ON users
 
 - [Drizzle ORM документация](https://orm.drizzle.team/)
 - [PostgreSQL документация](https://www.postgresql.org/docs/)
-- [Миграции](../migrations/)
-- [Repository примеры](../server/repositories/)
+- [Миграции](../../migrations/)
+- [Repository примеры](../../server/repositories/)
 
 ---
 

@@ -4,7 +4,46 @@
 
 Все endpoints требуют JWT аутентификации (middleware `jwtAuth`).
 
+Исключения для iCalendar:
+
+- `GET /api/schedule/:scheduleId/calendar.ics` публично отдаёт `.ics` только для событий публичных клубов; для закрытых клубов используется JWT-защищённый вариант в `/api/schedule`.
+- `GET /api/clubs/:clubId/calendar.ics` публично отдаёт feed только для публичных клубов.
+- `GET /api/calendar/subscription/:token.ics` работает без JWT для календарных клиентов, но проверяет hash токена, отзыв токена и активное членство пользователя в клубе.
+- Управление персональной подпиской закрытого клуба доступно авторизованным участникам через `/api/clubs/:clubId/calendar-subscription`.
+
 ## Endpoints
+
+### Скачать событие в iCalendar
+**GET** `/api/schedule/:scheduleId/calendar.ics`
+
+Возвращает `text/calendar` для одного события. `UID` стабилен в формате `schedule-{id}@voxlibris`, `SEQUENCE` берётся из `calendarSequence`, `LAST-MODIFIED` — из `updatedAt`.
+
+Для `status = cancelled` событие отдаётся с `STATUS:CANCELLED`. Если задан `reminderMinutes`, добавляется `VALARM`.
+
+---
+
+### Feed календаря клуба
+**GET** `/api/clubs/:clubId/calendar.ics`
+
+Возвращает один `VCALENDAR` с событиями клуба. Публичный endpoint не отдаёт закрытые клубы.
+
+---
+
+### Персональная подписка закрытого клуба
+**GET** `/api/calendar/subscription/:token.ics`
+
+Endpoint без JWT для календарных клиентов. Plaintext токен не хранится в БД; поиск выполняется по SHA-256 hash. Отозванные токены и пользователи без активного членства получают `404` без раскрытия деталей.
+
+---
+
+### Управление календарной подпиской клуба
+**POST** `/api/clubs/:clubId/calendar-subscription`  
+**DELETE** `/api/clubs/:clubId/calendar-subscription`  
+**POST** `/api/clubs/:clubId/calendar-subscription/rotate`
+
+Создаёт, отзывает и перевыпускает персональную ссылку. Доступно только активному участнику клуба.
+
+---
 
 ### Создать расписание
 **POST** `/api/schedule`

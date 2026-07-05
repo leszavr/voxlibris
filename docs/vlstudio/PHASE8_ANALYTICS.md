@@ -283,8 +283,8 @@ curl -X GET http://localhost:5000/api/sessions/session-123/analytics/export \
 
 ## Документация
 
-- [API Аналитики Сессий](./routes/README_SESSION_ANALYTICS_API.md)
-- [Общая аналитика](./analytics-routes.ts)
+- [API Аналитики Сессий](../05-server/api-routes/README_SESSION_ANALYTICS_API.md)
+- [Общая аналитика](../../server/analytics-routes.ts)
 
 ---
 

@@ -1,8 +1,8 @@
 # Геймификация VoxLibris
 
 **Статус:** Current  
-**Дата обновления:** 2026-06-28  
-**Версия:** 1.0
+**Дата обновления:** 2026-07-04  
+**Версия:** 1.1
 
 ## Содержание
 
@@ -345,6 +345,56 @@ const achievement = {
     title: "🦋 Социальный бабочка"
   }
 };
+```
+
+## Компоненты UI
+
+### AchievementBadge
+
+```tsx
+<AchievementBadge
+  achievement={achievement}
+  size="md"
+  showProgress
+/>
+```
+
+### AchievementImagePreview
+
+Предпросмотр изображений достижений с возможностью увеличения:
+
+```tsx
+<AchievementImagePreview
+  src="/achievements/badge-gold.png"
+  alt="Золотой значок"
+  triggerClassName="w-16 h-16"
+/>
+```
+
+**Функционал:**
+- Миниатюра с ленивой загрузкой (`loading="lazy"`)
+- Клик открывает диалог с увеличенным изображением
+- Адаптивный размер: 128×128 (mobile), 160×160 (desktop)
+- Доступность: `aria-label`, `DialogTitle` для screen readers
+
+### ProgressBar
+
+```tsx
+<ProgressBar
+  current={750}
+  max={1000}
+  label="XP до следующего уровня"
+/>
+```
+
+### LeaderboardTable
+
+```tsx
+<LeaderboardTable
+  period="week"
+  category="reading_time"
+  limit={10}
+/>
 ```
 
 ## Интеграция с социальными функциями

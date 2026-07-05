@@ -1,50 +1,15 @@
-import {
-  ArrowLeft,
-  Bookmark,
-  Book,
-  BookOpen,
-  Layers,
-  Clock,
-  Edit,
-  Eye,
-  Library as LibraryIcon,
-  Loader2,
-  LogIn,
-  MoreVertical,
-  CalendarClock,
-  Trash2,
-  Share2,
-} from "lucide-react";
+import { BookOpen, Layers, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useLocation } from "wouter";
+import { useLocation } from "wouter";
 import { AccountActivationBanner } from "@/components/AccountActivationBanner";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { HistoryBookCard } from "@/components/ui/history-book-card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
 import { VoxLibrisUpload } from "@/components/ui/voxlibris-upload";
 import { useAuth } from "@/hooks/use-auth";
 import {
@@ -60,271 +25,19 @@ import { savePendingReaderBookmarkNavigation } from "@/lib/reader-bookmark-navig
 import { apiRequest } from "@/lib/queryClient";
 import { toast } from "@/hooks/use-toast";
 import { socialApi, type FollowUser } from "@/api/social";
-
-interface ReadingStatusRecord {
-  id: string;
-  bookId: string;
-  bookType: "personal" | "club";
-  status: "reading" | "completed" | "planned" | "abandoned";
-  notes: string | null;
-  completedAt?: string | null;
-  updatedAt?: string;
-  book: {
-    id: string;
-    title: string;
-    author: string;
-    coverUrl?: string | null;
-    format?: string;
-  } | null;
-}
-
-interface PersonalLibraryBookCardProps {
-  book: PersonalBook;
-  fallbackCover: string;
-  formatBookGenres: (book: PersonalBook) => string;
-  onRead: (book: PersonalBook) => void;
-  onEdit: (book: PersonalBook) => void;
-  onDelete: (book: PersonalBook) => void;
-  onMarkAsCompleted: (book: PersonalBook) => void;
-  onPlan: (book: PersonalBook) => void;
-  onRecommend: (book: PersonalBook) => void;
-  onNotInterested: (book: PersonalBook) => void;
-  canMarkAsCompleted: boolean;
-  markAsCompletedPending: boolean;
-}
-
-type ShelfSort = "completed_desc" | "completed_asc" | "title_asc" | "title_desc";
-type ShelfFormatFilter = "all" | "EPUB" | "FB2";
-type LibrarySort = "created_desc" | "created_asc" | "title_asc" | "title_desc" | "author_asc" | "author_desc" | "genre_asc";
-type GenreGroupMode = "none" | "primary_genre";
-
-const SHELF_PAGE_SIZE = 9;
-const RECOMMEND_PREFIX = "[RECOMMEND]";
-
-type RecommendationPayload = {
-  type: "book";
-  entityId: string;
-  title: string;
-  subtitle: string;
-  imageUrl?: string | null;
-  comment?: string | null;
-};
-
-type DmConversationCreateResponse = {
-  conversation: {
-    id: string;
-  };
-};
-
-function encodeRecommendationPayload(payload: RecommendationPayload): string {
-  return `${RECOMMEND_PREFIX}${JSON.stringify(payload)}`;
-}
-
-async function loadAllFollowUsers(
-  loader: (userId: string, limit: number, cursor?: string) => Promise<{ users: FollowUser[]; nextCursor: string | null }>,
-  userId: string,
-): Promise<FollowUser[]> {
-  const all: FollowUser[] = [];
-  let cursor: string | undefined;
-
-  while (true) {
-    const page = await loader(userId, 50, cursor);
-    all.push(...page.users);
-    if (!page.nextCursor) break;
-    cursor = page.nextCursor;
-  }
-
-  return all;
-}
-
-function isShelvedCompletedStatus(item: ReadingStatusRecord): boolean {
-  if (item.bookType !== "personal" || item.status !== "completed") return false;
-  if (!item.notes) return false;
-
-  try {
-    const parsed = JSON.parse(item.notes) as { shelved?: boolean };
-    return parsed.shelved === true;
-  } catch {
-    return false;
-  }
-}
-
-function generateDeleteCode(): string {
-  return String(Math.floor(100000 + Math.random() * 900000));
-}
-
-function getPersonalBookFormatLabel(book: PersonalBook): string {
-  if (book.format === "EPUB") return "EPUB";
-  if (book.format === "FB2") return "FB2";
-  return "Книга";
-}
-
-function getLocalStorageValue<T>(key: string, fallback: T): T {
-  if (globalThis.window === undefined) return fallback;
-  try {
-    const value = globalThis.window.localStorage.getItem(key);
-    if (value === null) return fallback;
-    return JSON.parse(value) as T;
-  } catch {
-    return fallback;
-  }
-}
-
-function setLocalStorageValue<T>(key: string, value: T): void {
-  if (globalThis.window === undefined) return;
-  try {
-    globalThis.window.localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // localStorage can be unavailable in private mode or denied by browser settings.
-  }
-}
-
-function useLocalStorageState<T>(key: string, fallback: T): readonly [T, (value: T) => void] {
-  const [value, setValue] = useState<T>(() => getLocalStorageValue(key, fallback));
-
-  const setPersistedValue = (nextValue: T) => {
-    setValue(nextValue);
-    setLocalStorageValue(key, nextValue);
-  };
-
-  return [value, setPersistedValue] as const;
-}
-
-function serializeHistoryCompletedAt(value: Date | string | null | undefined): string {
-  if (!value) return "";
-  return value instanceof Date ? value.toISOString() : value;
-}
-
-function PersonalLibraryBookCard({
-  book,
-  fallbackCover,
-  formatBookGenres,
-  onRead,
-  onEdit,
-  onDelete,
-  onMarkAsCompleted,
-  onPlan,
-  onRecommend,
-  onNotInterested,
-  canMarkAsCompleted,
-  markAsCompletedPending,
-}: Readonly<PersonalLibraryBookCardProps>) {
-  return (
-    <div className="group flex flex-col gap-4 rounded-xl border bg-card p-4 transition-all hover:border-primary/20 sm:flex-row sm:gap-6 sm:p-6">
-      <div className="w-full sm:w-48 aspect-[2/3] shrink-0 rounded-lg overflow-hidden shadow-md">
-        <img
-          src={book.coverUrl || fallbackCover}
-          alt={book.title}
-          className="w-full h-full object-cover"
-          onError={(e) => {
-            e.currentTarget.src = fallbackCover;
-          }}
-        />
-      </div>
-
-      <div className="flex-1 flex flex-col justify-between space-y-4">
-        <div>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <h3 className="text-lg font-serif font-bold sm:text-xl">{book.title}</h3>
-              <p className="text-muted-foreground">{book.author}</p>
-            </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8">
-                  <MoreVertical className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => onRead(book)} className="flex items-center gap-2">
-                  <Eye className="h-4 w-4" />
-                  Читать
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onEdit(book)} className="flex items-center gap-2">
-                  <Edit className="h-4 w-4" />
-                  Редактировать
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onDelete(book)} className="text-destructive flex items-center gap-2">
-                  <Trash2 className="h-4 w-4" />
-                  Удалить из библиотеки
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-
-          <div className="mt-4 flex items-center gap-2 text-sm text-accent-foreground/80 font-medium bg-accent/10 w-fit px-2 py-1 rounded">
-            <LibraryIcon className="w-3.5 h-3.5" />
-            {getPersonalBookFormatLabel(book)}
-          </div>
-
-          {formatBookGenres(book) && (
-            <div className="mt-2 text-xs text-muted-foreground">
-              Жанры: {formatBookGenres(book)}
-            </div>
-          )}
-
-          {book.description && (
-            <p className="text-sm text-muted-foreground mt-3 line-clamp-2">
-              {book.description}
-            </p>
-          )}
-        </div>
-
-        <div className="space-y-2">
-          {book.progress !== undefined && book.progress > 0 && (
-            <div className="space-y-1">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Прогресс</span>
-                <span className="font-medium">{book.progress}%</span>
-              </div>
-              <Progress value={book.progress} className="h-2" />
-            </div>
-          )}
-
-          <div className="flex justify-end text-sm">
-            <span className="text-muted-foreground">
-              {book.language && <span className="uppercase">{book.language}</span>}
-            </span>
-          </div>
-          <p className="text-xs text-muted-foreground flex items-center gap-1">
-            <Clock className="w-3 h-3" />
-            Добавлено: {new Date(book.createdAt ?? book.uploadedAt).toLocaleDateString("ru-RU")}
-          </p>
-        </div>
-
-        <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:gap-3">
-          <Button className="flex-1 gap-2 sm:flex-none" onClick={() => onRead(book)}>
-            <Book className="w-4 h-4" /> Читать
-          </Button>
-          {canMarkAsCompleted && (
-            <Button
-              variant="secondary"
-              className="flex-1 gap-2 sm:flex-none"
-              onClick={() => onMarkAsCompleted(book)}
-              disabled={markAsCompletedPending}
-            >
-              <BookOpen className="w-4 h-4" />
-              {markAsCompletedPending ? "Сохраняем..." : "Прочитано"}
-            </Button>
-          )}
-          <Button variant="outline" className="flex-1 gap-2 sm:flex-none" onClick={() => onPlan(book)}>
-            <CalendarClock className="w-4 h-4" /> Запланировать
-          </Button>
-          <Button variant="outline" className="flex-1 gap-2 sm:flex-none" onClick={() => onRecommend(book)}>
-            <Share2 className="w-4 h-4" /> Порекомендовать
-          </Button>
-          <Button
-            variant="outline"
-            className="flex-1 gap-2 text-muted-foreground hover:text-destructive sm:flex-none"
-            onClick={() => onNotInterested(book)}
-          >
-            <Trash2 className="w-4 h-4" /> Не интересно
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
+import { LibraryDialogs } from "./library/dialogs";
+import { PersonalLibraryBookCard } from "./library/personal-book-card";
+import { BookmarksTab, HistoryTab } from "./library/reading-tabs";
+import { EmptyLibraryState, LibraryAuthRequired, LibraryLoadingSkeleton } from "./library/states";
+import type { DmConversationCreateResponse, GenreGroupMode, LibrarySort, ReadingStatusRecord, ShelfFormatFilter, ShelfSort } from "./library/types";
+import {
+  encodeRecommendationPayload,
+  generateDeleteCode,
+  isShelvedCompletedStatus,
+  loadAllFollowUsers,
+  SHELF_PAGE_SIZE,
+  useLocalStorageState,
+} from "./library/utils";
 
 export default function Library() {
   const { isAuthenticated, user } = useAuth();
@@ -937,29 +650,7 @@ export default function Library() {
 
   const renderCurrentTabContent = () => {
     if (isLoading) {
-      return (
-        <div className="space-y-6">
-          {[1, 2].map((i) => (
-            <div
-              key={i}
-              className="flex flex-col gap-4 rounded-xl border bg-card p-4 sm:flex-row sm:gap-6 sm:p-6"
-            >
-              <Skeleton className="w-full sm:w-48 aspect-[2/3] shrink-0 rounded-lg" />
-              <div className="flex-1 space-y-4">
-                <div className="space-y-2">
-                  <Skeleton className="h-6 w-2/3" />
-                  <Skeleton className="h-4 w-1/3" />
-                </div>
-                <Skeleton className="h-4 w-1/4" />
-                <div className="space-y-2">
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-2 w-full" />
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      );
+      return <LibraryLoadingSkeleton />;
     }
 
     return (
@@ -1042,53 +733,13 @@ export default function Library() {
               ))}
             </div>
           ))
-        ) : (
-          <div className="text-center py-16 bg-secondary/20 rounded-xl border border-dashed">
-            <LibraryIcon className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="font-medium">Ваша библиотека пуста</h3>
-            <p className="text-muted-foreground max-w-sm mx-auto mt-2">
-              Добавьте свою первую книгу, загрузив файл EPUB или FB2 через кнопку "Загрузить
-              книгу" выше.
-            </p>
-          </div>
-        )}
+        ) : <EmptyLibraryState />}
       </>
     );
   };
 
   if (!isAuthenticated) {
-    return (
-      <MainLayout>
-        <div className="container flex justify-center px-4 py-8 sm:px-6 sm:py-12 md:px-12">
-          <Card className="max-w-md w-full">
-            <CardHeader className="text-center">
-              <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center">
-                <LogIn className="h-6 w-6 text-blue-600" />
-              </div>
-              <CardTitle>Требуется авторизация</CardTitle>
-            </CardHeader>
-            <CardContent className="text-center space-y-4">
-              <p className="text-muted-foreground">
-                Личная библиотека доступна только авторизованным пользователям. Войдите в систему
-                или зарегистрируйтесь, чтобы загружать и читать свои книги.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-2 justify-center">
-                <Button asChild>
-                  <Link href="/auth/login">
-                    <LogIn className="h-4 w-4 mr-2" />
-                    Войти / Регистрация
-                  </Link>
-                </Button>
-                <Button variant="outline" onClick={() => setLocation("/")}>
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  На главную
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </MainLayout>
-    );
+    return <LibraryAuthRequired setLocation={setLocation} />;
   }
 
   return (
@@ -1253,418 +904,60 @@ export default function Library() {
             )}
           </TabsContent>
 
-          <TabsContent value="history">
-            <div className="space-y-4">
-              {historyData?.length === 0 ? (
-                <div className="text-center py-16 bg-secondary/20 rounded-xl border border-dashed">
-                  <BookOpen className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                  <h3 className="font-medium">Нет прочитанных книг</h3>
-                  <p className="text-muted-foreground max-w-sm mx-auto mt-2">
-                    Книги, которые вы прочитаете до конца, появятся здесь автоматически.
-                  </p>
-                </div>
-              ) : (
-                <>
-                  <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <h2 className="text-xl font-semibold">
-                      История чтения ({(historyData || []).length})
-                    </h2>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => clearHistory.mutate()}
-                      disabled={clearHistory.isPending}
-                      className="w-full sm:w-auto"
-                    >
-                      {clearHistory.isPending ? (
-                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                      ) : (
-                        <Trash2 className="w-4 h-4 mr-2" />
-                      )}
-                      Очистить историю
-                    </Button>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {(historyData || []).map((book) => (
-                      <HistoryBookCard
-                        key={book.id}
-                        bookTitle={book.bookTitle}
-                        bookAuthor={book.bookAuthor}
-                        bookCoverUrl={book.bookCoverUrl ?? undefined}
-                        completedAt={serializeHistoryCompletedAt(book.completedAt)}
-                        readingTimeMinutes={book.readingTimeMinutes ?? undefined}
-                      />
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          </TabsContent>
+          <HistoryTab historyData={historyData} clearHistory={clearHistory} />
 
-          <TabsContent value="bookmarks">
-            {(() => {
-              if (bookmarksLoading) {
-                return (
-                  <div className="space-y-4">
-                    {[1, 2, 3].map((i) => (
-                      <div key={i} className="flex gap-3 rounded-xl border bg-card p-3 sm:gap-4 sm:p-4">
-                        <Skeleton className="w-20 h-28 rounded-lg shrink-0" />
-                        <div className="flex-1 space-y-3">
-                          <Skeleton className="h-5 w-2/3" />
-                          <Skeleton className="h-4 w-1/3" />
-                          <Skeleton className="h-4 w-1/4" />
-                          <Skeleton className="h-9 w-32" />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                );
-              }
-
-              if (bookmarks.length === 0) {
-                return (
-                  <div className="text-center py-16 bg-secondary/20 rounded-xl border border-dashed">
-                    <Bookmark className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                    <h3 className="font-medium">Нет сохраненных закладок</h3>
-                    <p className="text-muted-foreground max-w-sm mx-auto mt-2">
-                      Ставьте закладки прямо во время чтения, чтобы быстро возвращаться к важным местам книги.
-                    </p>
-                  </div>
-                );
-              }
-
-              return (
-                <div className="space-y-4">
-                  {bookmarks.map((bookmark) => (
-                  <div
-                    key={bookmark.id}
-                    className="group flex flex-col gap-4 rounded-xl border bg-card p-4 transition-all hover:border-primary/20 sm:flex-row"
-                  >
-                    <div className="w-20 h-28 rounded-lg overflow-hidden shadow-sm shrink-0 bg-muted">
-                      {bookmark.bookCoverUrl ? (
-                        <img
-                          src={bookmark.bookCoverUrl}
-                          alt={bookmark.bookTitle || "Обложка книги"}
-                          className="w-full h-full object-cover"
-                          onError={(e) => {
-                            e.currentTarget.src = fallbackCover;
-                          }}
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-                          <BookOpen className="w-6 h-6" />
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex-1 flex flex-col justify-between gap-3 min-w-0">
-                      <div className="min-w-0">
-                        <h3 className="text-lg font-semibold line-clamp-2 break-words">
-                          {bookmark.title || "Без названия"}
-                        </h3>
-                        <p className="text-sm text-muted-foreground truncate">
-                          {bookmark.bookTitle || "Книга"}{bookmark.bookAuthor ? ` • ${bookmark.bookAuthor}` : ""}
-                        </p>
-                        {bookmark.chapterNumber && (
-                          <p className="text-sm text-muted-foreground mt-2">
-                            Глава {bookmark.chapterNumber}
-                          </p>
-                        )}
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Создано: {new Date(bookmark.createdAt).toLocaleString("ru-RU")}
-                        </p>
-                      </div>
-
-                      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                        <Button onClick={() => handleOpenBookmark(bookmark)} className="w-full sm:w-auto">
-                          <BookOpen className="w-4 h-4 mr-2" />
-                          Открыть закладку
-                        </Button>
-                        <Button
-                          variant="outline"
-                          onClick={() => {
-                            void handleDeleteBookmark({
-                              id: bookmark.id,
-                              bookId: bookmark.bookId,
-                            });
-                          }}
-                          disabled={deleteBookmarkMutation.isPending}
-                          className="w-full sm:w-auto"
-                        >
-                          <Trash2 className="w-4 h-4 mr-2" />
-                          Удалить
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                  ))}
-                </div>
-              );
-            })()}
-          </TabsContent>
+          <BookmarksTab
+            bookmarksLoading={bookmarksLoading}
+            bookmarks={bookmarks}
+            fallbackCover={fallbackCover}
+            onOpenBookmark={handleOpenBookmark}
+            onDeleteBookmark={(bookmark) => void handleDeleteBookmark(bookmark)}
+            deleteBookmarkPending={deleteBookmarkMutation.isPending}
+          />
         </Tabs>
       </div>
 
-      {/* Edit Book Dialog */}
-      <Dialog open={!!editingBook} onOpenChange={() => setEditingBook(null)}>
-        <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Редактировать книгу</DialogTitle>
-            <DialogDescription>
-              Измените информацию о книге. Нажмите "Сохранить" для применения изменений.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2 sm:grid-cols-4 sm:items-center sm:gap-4">
-              <Label htmlFor="title" className="sm:text-right">
-                Название
-              </Label>
-              <Input
-                id="title"
-                value={editForm.title}
-                onChange={(e) => setEditForm((prev) => ({ ...prev, title: e.target.value }))}
-                className="sm:col-span-3"
-              />
-            </div>
-            <div className="grid gap-2 sm:grid-cols-4 sm:items-center sm:gap-4">
-              <Label htmlFor="author" className="sm:text-right">
-                Автор
-              </Label>
-              <Input
-                id="author"
-                value={editForm.author}
-                onChange={(e) => setEditForm((prev) => ({ ...prev, author: e.target.value }))}
-                className="sm:col-span-3"
-              />
-            </div>
-            <div className="grid gap-2 sm:grid-cols-4 sm:items-start sm:gap-4">
-              <Label htmlFor="description" className="sm:pt-2 sm:text-right">
-                Описание
-              </Label>
-              <Textarea
-                id="description"
-                value={editForm.description}
-                onChange={(e) => setEditForm((prev) => ({ ...prev, description: e.target.value }))}
-                className="sm:col-span-3"
-                rows={3}
-              />
-            </div>
-            <div className="grid gap-2 sm:grid-cols-4 sm:items-center sm:gap-4">
-              <Label htmlFor="genre" className="sm:text-right">
-                Жанр
-              </Label>
-              <Input
-                id="genre"
-                value={editForm.genre}
-                onChange={(e) => setEditForm((prev) => ({ ...prev, genre: e.target.value }))}
-                className="sm:col-span-3"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingBook(null)}>
-              Отмена
-            </Button>
-            <Button onClick={handleUpdateBook} disabled={updateBookMutation.isPending}>
-              {updateBookMutation.isPending ? "Сохранение..." : "Сохранить"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Book Dialog */}
-      <Dialog open={!!deletingBook} onOpenChange={() => setDeletingBook(null)}>
-        <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Удалить книгу</DialogTitle>
-            <DialogDescription>
-              Вы уверены, что хотите удалить книгу "{deletingBook?.title}"? Это действие нельзя
-              отменить. Все данные о книге и её содержимое будут удалены.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeletingBook(null)}>
-              Отмена
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDeleteBook}
-              disabled={deleteBookMutation.isPending}
-            >
-              {deleteBookMutation.isPending ? "Удаление..." : "Удалить"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Plan Book Dialog */}
-      <Dialog open={!!planningBook} onOpenChange={() => setPlanningBook(null)}>
-        <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Запланировать чтение</DialogTitle>
-            <DialogDescription>
-              Выберите будущий год, в котором хотите прочитать книгу "{planningBook?.title}".
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-2 py-4">
-            <Label htmlFor="planned-year">Хочу прочитать в году</Label>
-            <Select
-              value={String(plannedYear)}
-              onValueChange={(value) => setPlannedYear(Number.parseInt(value, 10))}
-            >
-              <SelectTrigger id="planned-year">
-                <SelectValue placeholder="Выберите год" />
-              </SelectTrigger>
-              <SelectContent>
-                {futureYears.map((year) => (
-                  <SelectItem key={year} value={String(year)}>
-                    {year}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPlanningBook(null)}>
-              Отмена
-            </Button>
-            <Button onClick={handleConfirmPlanBook} disabled={planBookMutation.isPending}>
-              {planBookMutation.isPending ? "Сохраняем..." : "Запланировать"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Recommend Book Dialog */}
-      <Dialog open={!!recommendBook} onOpenChange={() => setRecommendBook(null)}>
-        <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-[560px]">
-          <DialogHeader>
-            <DialogTitle>Порекомендовать книгу</DialogTitle>
-            <DialogDescription>
-              Выберите подписчиков и/или пользователей, на которых вы подписаны. Отправятся только метаданные книги и ваш комментарий.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div className="rounded-md border bg-muted/30 p-3 text-sm">
-              <p className="font-medium">{recommendBook?.title}</p>
-              <p className="text-muted-foreground">{recommendBook?.author}</p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="recommend-comment">Комментарий</Label>
-              <Textarea
-                id="recommend-comment"
-                placeholder="Почему рекомендуете эту книгу?"
-                maxLength={500}
-                value={recommendComment}
-                onChange={(e) => setRecommendComment(e.target.value)}
-              />
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="recommend-select-all"
-                  checked={allTargetsSelected}
-                  onCheckedChange={(checked) => handleToggleSelectAllTargets(checked === true)}
-                />
-                <Label htmlFor="recommend-select-all">Выбрать всех</Label>
-              </div>
-              <span className="text-xs text-muted-foreground">
-                Выбрано: {recommendSelectedUserIds.size}
-              </span>
-            </div>
-
-            <div className="max-h-64 overflow-y-auto rounded-md border">
-              {renderRecommendTargetsList()}
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRecommendBook(null)}>
-              Отмена
-            </Button>
-            <Button onClick={() => void handleSendBookRecommendation()} disabled={recommendSending || recommendLoading}>
-              {recommendSending ? "Отправляем..." : "Отправить рекомендацию"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Shelf Delete Confirmation Dialog */}
-      <Dialog
-        open={!!shelfDeleteItem}
-        onOpenChange={(open) => {
-          if (!open) handleCloseShelfDelete();
-        }}
-      >
-        <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Удалить книгу с полки</DialogTitle>
-            <DialogDescription>
-              Чтобы избежать случайного удаления, введите код подтверждения для книги
-              "{shelfDeleteItem?.book?.title}".
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-3 py-2">
-            <div className="rounded-md border bg-muted/30 px-3 py-2">
-              <p className="text-xs text-muted-foreground">Код подтверждения</p>
-              <p className="mt-1 font-mono text-lg tracking-widest">{shelfDeleteCode || "------"}</p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="shelf-delete-code">Введите код</Label>
-              <Input
-                id="shelf-delete-code"
-                inputMode="numeric"
-                maxLength={6}
-                value={shelfDeleteInput}
-                onChange={(e) => setShelfDeleteInput(e.target.value.replaceAll(/\D/g, "").slice(0, 6))}
-                placeholder="6 цифр"
-              />
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={handleCloseShelfDelete}>
-              Отмена
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleConfirmShelfDelete}
-              disabled={removeFromShelfMutation.isPending || shelfDeleteInput.length !== 6}
-            >
-              {removeFromShelfMutation.isPending ? "Удаляем..." : "Удалить"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Not Interested Dialog */}
-      <Dialog open={!!notInterestedBook} onOpenChange={() => setNotInterestedBook(null)}>
-        <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Не интересно</DialogTitle>
-            <DialogDescription>
-              Книга "{notInterestedBook?.title}" будет удалена из личной библиотеки и сохранена в разделе "Брошено" для статистики.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setNotInterestedBook(null)}>
-              Отмена
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleConfirmNotInterested}
-              disabled={markAsNotInterestedMutation.isPending}
-            >
-              {markAsNotInterestedMutation.isPending ? "Удаляем..." : "Подтвердить"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <LibraryDialogs
+        editingBook={editingBook}
+        setEditingBook={setEditingBook}
+        editForm={editForm}
+        setEditForm={setEditForm}
+        handleUpdateBook={handleUpdateBook}
+        updateBookPending={updateBookMutation.isPending}
+        deletingBook={deletingBook}
+        setDeletingBook={setDeletingBook}
+        handleDeleteBook={handleDeleteBook}
+        deleteBookPending={deleteBookMutation.isPending}
+        planningBook={planningBook}
+        setPlanningBook={setPlanningBook}
+        plannedYear={plannedYear}
+        setPlannedYear={setPlannedYear}
+        futureYears={futureYears}
+        handleConfirmPlanBook={handleConfirmPlanBook}
+        planBookPending={planBookMutation.isPending}
+        recommendBook={recommendBook}
+        setRecommendBook={setRecommendBook}
+        recommendComment={recommendComment}
+        setRecommendComment={setRecommendComment}
+        allTargetsSelected={allTargetsSelected}
+        handleToggleSelectAllTargets={handleToggleSelectAllTargets}
+        recommendSelectedUserIds={recommendSelectedUserIds}
+        renderRecommendTargetsList={renderRecommendTargetsList}
+        handleSendBookRecommendation={() => void handleSendBookRecommendation()}
+        recommendSending={recommendSending}
+        recommendLoading={recommendLoading}
+        shelfDeleteItem={shelfDeleteItem}
+        shelfDeleteCode={shelfDeleteCode}
+        shelfDeleteInput={shelfDeleteInput}
+        setShelfDeleteInput={setShelfDeleteInput}
+        handleCloseShelfDelete={handleCloseShelfDelete}
+        handleConfirmShelfDelete={handleConfirmShelfDelete}
+        removeFromShelfPending={removeFromShelfMutation.isPending}
+        notInterestedBook={notInterestedBook}
+        setNotInterestedBook={setNotInterestedBook}
+        handleConfirmNotInterested={handleConfirmNotInterested}
+        markAsNotInterestedPending={markAsNotInterestedMutation.isPending}
+      />
     </MainLayout>
   );
 }

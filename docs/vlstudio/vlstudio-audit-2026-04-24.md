@@ -161,8 +161,8 @@ REST fallback/source of truth: [GET /api/clubs/:clubId/live-readers](/home/odmen
 
 Сейчас есть:
 
-- отдельная страница Studio — [reader-studio.tsx](/home/odmen/DEV/voxlibris/client/src/pages/reader-studio.tsx#L1-L586)
-- встроенный studio-mode внутри reader — [ClubReader](/home/odmen/DEV/voxlibris/client/src/components/reader/ClubReader.tsx#L835-L1064)
+- отдельная страница Studio — [reader-studio-view.ts](../../client/src/lib/reader-studio-view.ts#L1-L586)
+- встроенный studio-mode внутри reader — [ClubReader](../../client/src/components/reader/ClubReader.tsx#L835-L1064)
 
 Проблема:
 
@@ -191,7 +191,7 @@ REST fallback/source of truth: [GET /api/clubs/:clubId/live-readers](/home/odmen
 - `live`
 - `paused`
 
-См. [useStudioMode](/home/odmen/DEV/voxlibris/client/src/hooks/use-studio-mode.ts#L25-L50) и [reader-studio.tsx](/home/odmen/DEV/voxlibris/client/src/pages/reader-studio.tsx#L318-L326).
+См. [useStudioMode](../../client/src/hooks/use-studio-mode.ts#L25-L50) и [reader-studio-view.ts](../../client/src/lib/reader-studio-view.ts#L318-L326).
 
 Отсутствует:
 
@@ -203,8 +203,8 @@ REST fallback/source of truth: [GET /api/clubs/:clubId/live-readers](/home/odmen
 
 Серверные контуры есть:
 
-- реакции/вопросы в websocket — [server/websocket/reading-sessions.ts](/home/odmen/DEV/voxlibris/server/websocket/reading-sessions.ts#L248-L358)
-- сущности в схеме — [shared/schema.ts](/home/odmen/DEV/voxlibris/shared/schema.ts#L1393-L1458)
+- реакции/вопросы в websocket — [server/websocket/reading-sessions.ts](../../server/websocket/reading-sessions.ts#L248-L358)
+- сущности в схеме — [shared/schema.ts](../../shared/schema.ts#L1393-L1458)
 
 Но в текущем основном UX встроенной Studio:
 
@@ -224,7 +224,7 @@ REST fallback/source of truth: [GET /api/clubs/:clubId/live-readers](/home/odmen
 
 ### 4.5. Отдельная страница reader-studio перегружена
 
-Файл [client/src/pages/reader-studio.tsx](/home/odmen/DEV/voxlibris/client/src/pages/reader-studio.tsx#L1-L586) содержит слишком много обязанностей:
+Файл [client/src/lib/reader-studio-view.ts](../../client/src/lib/reader-studio-view.ts#L1-L586) содержит слишком много обязанностей:
 
 - инициализация сессии;
 - управление микрофоном;

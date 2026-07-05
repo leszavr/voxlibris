@@ -229,8 +229,8 @@ curl -X GET http://localhost:5000/api/clubs/club-123/recordings/stats \
 
 ## Документация
 
-- [API Записей](./routes/README_RECORDINGS_API.md)
-- [File Storage (MinIO)](./file-storage.ts)
+- [API Записей](../05-server/api-routes/README_RECORDINGS_API.md)
+- [File Storage (MinIO)](../../server/file-storage.ts)
 
 ---
 

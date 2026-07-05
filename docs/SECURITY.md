@@ -1,8 +1,8 @@
 # Безопасность VoxLibris
 
 **Статус:** Current  
-**Дата обновления:** 2026-06-28  
-**Версия:** 1.0
+**Дата обновления:** 2026-07-04  
+**Версия:** 1.1
 
 ## Содержание
 
@@ -237,6 +237,69 @@ app.set('trust proxy', 1); // Trust only first hop
 ```
 
 Предотвращает spoofing IP-адресов от пользователей.
+
+## Системные настройки безопасности
+
+### Хранение в БД
+
+Настройки хранятся в таблице `system_settings`:
+
+| Ключ | Значение по умолчанию | Описание |
+|------|----------------------|----------|
+| `security.max_login_attempts` | `5` | Максимум неудачных попыток входа |
+| `security.password_min_length` | `8` | Минимальная длина пароля |
+| `security.require_email_verification` | `true` | Требовать верификацию email |
+| `security.require_2fa_for_admins` | `false` | Требовать 2FA для админов (резерв) |
+
+### Админ-панель
+
+```http
+GET /api/admin/settings/security
+Authorization: Bearer {admin_token}
+```
+
+```http
+PUT /api/admin/settings/security
+Authorization: Bearer {admin_token}
+Content-Type: application/json
+
+{
+  "maxLoginAttempts": 5,
+  "passwordMinLength": 8,
+  "requireEmailVerification": true
+}
+```
+
+## Policy Modal
+
+### Назначение
+
+Универсальный модальный компонент для отображения юридических документов платформы.
+
+### Поддерживаемые политики
+
+| Тип | Содержание |
+|-----|------------|
+| `rules` | Правила VoxLibris |
+| `privacy` | Политика приватности |
+| `terms` | Условия использования |
+
+### Использование
+
+```tsx
+<PolicyModal
+  isOpen={isOpen}
+  onClose={handleClose}
+  policyType="privacy"
+/>
+```
+
+### Особенности
+
+- Markdown-контент с базовым парсингом
+- Блокировка скролла body при открытии
+- Закрытие по Escape и клику на оверлей
+- Адаптивный дизайн
 
 ## Security Checklist
 

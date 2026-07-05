@@ -1,8 +1,8 @@
 # Документация VoxLibris
 
 **Статус:** Current  
-**Дата обновления:** 2026-06-28  
-**Версия:** 2.0
+**Дата обновления:** 2026-07-04  
+**Версия:** 2.1
 
 Добро пожаловать в документацию VoxLibris — платформы социального чтения и книжных клубов.
 
@@ -59,13 +59,13 @@
 - [Тестирование](10-testing/README.md)
 - [Деплой и эксплуатация](11-deployment/README.md)
   - [Deployment guide](11-deployment/deployment-guide.md)
-  - [Docker](11-deployment/docker.md)
-  - [Мониторинг](11-deployment/monitoring.md)
+  - [Операции](11-deployment/operations.md)
+  - [Troubleshooting](11-deployment/troubleshooting.md)
 - [Руководство администратора](12-admin-manual/README.md)
 
 ### Дополнительно
 - [VoxLibris Studio](vlstudio/README.md)
-- [iCalendar интеграция](iCalendar/README.md)
+- [iCalendar API](iCalendar/api.md)
 - [Аудит документации](DOCUMENTATION_AUDIT.md)
 
 ## Важные operational notes
@@ -76,6 +76,18 @@
 - Studio baseline — Icecast/streaming route; WebRTC/mediasoup относится к roadmap/reference.
 
 ## Обновления
+
+### v2.1 (2026-07-04)
+- Добавлена документация по демо-кошельку чтеца и payout layer
+- Добавлена документация по финансовому аудиту и сбросу
+- Добавлена документация по системным настройкам безопасности
+- Добавлена документация по Policy Modal
+- Добавлена документация по Achievement Image Preview
+- Добавлена документация по Stream Intent Store
+- Обновлена документация по монетизации (кошелёк, аудит, сброс)
+- Обновлена документация по геймификации (UI компоненты)
+- Обновлена документация по Studio (stream intent)
+- Обновлена документация по безопасности (settings, policy modal)
 
 ### v2.0 (2026-06-28)
 - Добавлена документация по безопасности

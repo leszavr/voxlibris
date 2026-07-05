@@ -47,6 +47,17 @@ export default [
     },
   },
   {
+    files: ['infra/yooksssa_emulator/**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: {
+        ...globals.node,
+        ...globals.es2021,
+      },
+    },
+  },
+  {
     ignores: [
       'node_modules/**',
       'dist/**',

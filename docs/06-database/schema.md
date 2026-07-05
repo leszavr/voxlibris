@@ -70,6 +70,36 @@ server/database/
 
 ## Описание таблиц
 
+### reading_schedule: календарные поля
+
+Таблица `reading_schedule` хранит клубные события и используется для iCalendar export/feed.
+
+Календарное поле:
+
+- `calendar_sequence integer not null default 0` — значение `SEQUENCE` в `.ics`. Увеличивается при календарно значимых изменениях события: название, описание, время, длительность, статус, напоминание.
+
+Для отменённых событий запись не удаляется из feed сразу: iCalendar отдаёт `STATUS:CANCELLED`, чтобы внешние календарные клиенты увидели отмену.
+
+### calendar_subscription_tokens
+
+Персональные подписки на календарь закрытых клубов.
+
+Ключевые поля:
+
+- `token_hash text not null unique` — SHA-256 hash токена; plaintext token в БД не хранится.
+- `user_id varchar not null references users(id) on delete cascade`.
+- `club_id varchar not null references clubs(id) on delete cascade`.
+- `revoked_at timestamp null` — отзыв токена.
+- `last_used_at timestamp null` — последнее успешное использование feed.
+
+Индексы:
+
+- unique index по `token_hash`;
+- index по `(user_id, club_id)`;
+- index по `club_id`.
+
+Endpoint `/api/calendar/subscription/:token.ics` проверяет hash, `revoked_at` и активное членство пользователя в клубе.
+
 ### users
 
 Хранит информацию о пользователях приложения:

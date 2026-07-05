@@ -278,7 +278,7 @@ if (check.canRate) {
 
 ## Документация
 
-- [API Оценок Качества](./routes/README_READER_QUALITY_API.md)
+- [API Оценок Качества](../05-server/api-routes/README_READER_QUALITY_API.md)
 
 ---
 
