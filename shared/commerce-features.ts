@@ -26,7 +26,7 @@ export const commerceFeatureRegistrySeed = [
   { key: 'calendar.advanced.enabled', title: 'Расширенный календарь', category: 'platform', scopeType: 'platform', valueType: 'boolean', defaultBool: false },
   { key: 'notifications.advanced.enabled', title: 'Расширенные уведомления', category: 'platform', scopeType: 'platform', valueType: 'boolean', defaultBool: false },
 
-  { key: 'clubs.owned.max_count', title: 'Созданные клубы', category: 'clubs', scopeType: 'club', valueType: 'integer', defaultInt: 1 },
+  { key: 'clubs.owned.max_count', title: 'Созданные клубы', category: 'clubs', scopeType: 'platform', valueType: 'integer', defaultInt: 1 },
   { key: 'club.members.max_count', title: 'Участники клуба', category: 'clubs', scopeType: 'club', valueType: 'integer', defaultInt: 20 },
   { key: 'club.private.enabled', title: 'Приватный клуб', category: 'clubs', scopeType: 'club', valueType: 'boolean', defaultBool: false },
   { key: 'club.moderators.max_count', title: 'Модераторы клуба', category: 'clubs', scopeType: 'club', valueType: 'integer', defaultInt: 1 },

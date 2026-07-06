@@ -153,7 +153,7 @@ async function requireReaderClubOwner(clubId: string, userId: string) {
 
     if (clubType !== 'reader-led' && !isElevatedRole(req.user.role)) {
       try {
-        await new EntitlementService().assertLimit(req.user.userId, 'clubs.owned.max_count', await countOwnedStandardClubs(req.user.userId), { scopeType: 'club' });
+        await new EntitlementService().assertLimit(req.user.userId, 'clubs.owned.max_count', await countOwnedStandardClubs(req.user.userId), { scopeType: 'platform' });
       } catch (error) {
         if (error instanceof EntitlementError) return res.status(403).json(entitlementDenied(error));
         throw error;
