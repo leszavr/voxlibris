@@ -29,7 +29,6 @@ import {
   restoreReaderScrollPosition,
   useRestoreReaderScroll,
 } from "./core/use-reader-progress-sync";
-import { useReaderLatestProgress } from "./core/use-reader-latest-progress";
 import { useReaderPanelsAutoclose } from "./core/use-reader-panels-autoclose";
 import { usePreserveReaderVisualAnchor } from "./core/use-preserve-reader-visual-anchor";
 import { useSmoothReaderSpaceScroll } from "./core/use-smooth-reader-space-scroll";
@@ -172,7 +171,6 @@ function ClubReaderInner({ clubId, bookId }: Readonly<ClubReaderInnerProps>) {
     bookData,
     chapters,
     currentChapterContent,
-    refetchProgress,
     saveProgress,
   } = useClubReaderAdapter({
     clubId,
@@ -271,7 +269,6 @@ function ClubReaderInner({ clubId, bookId }: Readonly<ClubReaderInnerProps>) {
   const {
     rememberLocalProgress,
     saveWithSync,
-    isLocalSessionProgress,
     isSyncing: _isSyncing,
     syncError: _syncError,
     lastSyncTime: _lastSyncTime,
@@ -556,16 +553,6 @@ function ClubReaderInner({ clubId, bookId }: Readonly<ClubReaderInnerProps>) {
     protectedRefs: [tocPanelRef, settingsPanelRef, bookmarksPanelRef, helpPanelRef],
   });
 
-  const { suggestedProgress, dismissSuggestion } = useReaderLatestProgress({
-    currentChapter,
-    totalChapters,
-    scrollContainerRef: scrollElementRef,
-    remoteProgress: userProgress ?? null,
-    refreshProgress: refetchProgress,
-    enabled: currentChapter !== null && !progressLoading && totalChapters > 0,
-    hasLocalReadingActivity,
-    isLocalSessionProgress,
-  });
   const { scheduleSave: scheduleProgressSave, saveNow: saveProgressNow } = useDebouncedReaderProgressSave({
     scrollContainerRef: scrollElementRef,
     contentAreaRef: contentAreaRef as RefObject<HTMLElement | null>,
@@ -622,20 +609,6 @@ function ClubReaderInner({ clubId, bookId }: Readonly<ClubReaderInnerProps>) {
     });
     setPendingScrollRestore(null);
   }, [contentLoading, currentChapter, pendingScrollRestore, scrollElementRef]);
-
-  const openLatestPosition = () => {
-    if (!suggestedProgress) {
-      return;
-    }
-
-    dismissSuggestion();
-    const safeChapter = normalizeReaderChapter(suggestedProgress.currentChapter);
-    setPendingScrollRestore({
-      chapter: safeChapter,
-      positionRaw: suggestedProgress.currentPosition,
-    });
-    setCurrentChapter(safeChapter);
-  };
 
   const mainContent = useMemo(() => {
     if (contentLoading && currentChapter != null) {
@@ -707,15 +680,6 @@ function ClubReaderInner({ clubId, bookId }: Readonly<ClubReaderInnerProps>) {
 
   return (
     <div className="flex h-[100dvh] flex-col overflow-hidden bg-background text-foreground">
-      {suggestedProgress && (
-        <LatestPositionPrompt
-          currentChapter={currentChapter}
-          remoteChapter={suggestedProgress.currentChapter}
-          onOpenLatest={openLatestPosition}
-          onDismiss={dismissSuggestion}
-        />
-      )}
-
       {/* Диалог: чтец завершил стрим — предложить перейти к его позиции */}
       {streamEndedSuggestion && (
         <LatestPositionPrompt
@@ -837,7 +801,8 @@ function ClubReaderInner({ clubId, bookId }: Readonly<ClubReaderInnerProps>) {
           )}>
             <div
               ref={scrollContainerRef}
-              className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain"
+              className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain bg-background text-foreground"
+              data-club-reader-surface-theme={settings.theme}
                 onScroll={() => {
                   if (readerBlockedByStudioDevice) {
                     return;
@@ -866,7 +831,6 @@ function ClubReaderInner({ clubId, bookId }: Readonly<ClubReaderInnerProps>) {
               <div 
                 ref={contentAreaRef}
                 className="club-reader-content p-4 sm:p-6 md:p-8"
-                data-club-reader-surface-theme={settings.theme}
                 style={{
                   fontFamily: 'var(--club-reader-font-family, inherit)',
                   fontSize: 'var(--club-reader-font-size, 18px)',
