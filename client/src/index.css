@@ -183,6 +183,42 @@
     padding-right: 1rem;
     max-width: 1400px;
   }
+
+  input.native-picker-input[type="date"],
+  input.native-picker-input[type="time"] {
+    -webkit-appearance: auto;
+    appearance: auto;
+    color-scheme: light;
+    cursor: pointer;
+    display: block;
+    min-width: 0;
+    padding-right: 2.5rem;
+    position: relative;
+  }
+
+  .dark input.native-picker-input[type="date"],
+  .dark input.native-picker-input[type="time"] {
+    color-scheme: dark;
+  }
+
+  input.native-picker-input[type="date"]::-webkit-calendar-picker-indicator,
+  input.native-picker-input[type="time"]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    height: 1rem;
+    margin: 0;
+    opacity: 1;
+    padding: 0;
+    position: absolute;
+    right: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 1rem;
+  }
+
+  input.native-picker-input[type="date"]::-webkit-datetime-edit,
+  input.native-picker-input[type="time"]::-webkit-datetime-edit {
+    cursor: pointer;
+  }
 }
 
 @media (min-width: 768px) {
