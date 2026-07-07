@@ -20,8 +20,6 @@ import { ActiveReadersModal, LiveReadersBubble } from "@/components/studio/LiveR
 import { ListenerOverlay } from "@/components/studio/ListenerOverlay";
 import { VoxLibrisUpload } from "@/components/ui/voxlibris-upload";
 import { ClubSettingsModal } from "@/components/club/club-settings-modal";
-import { InvitationsList } from "@/components/club/invitations-list";
-import { InviteMemberModal } from "@/components/club/invite-member-modal";
 import { ClubContentTabs } from "@/pages/club-details";
 import { useAuth } from "@/hooks/use-auth";
 import { useClub, useClubMembers, useModerateClubMember, useRemoveMember, type ClubDetailsResponse, type ClubMemberWithUser } from "@/hooks/use-clubs";
@@ -192,8 +190,8 @@ export default function ReaderClubDetails({ clubId, initialClub }: ReaderClubDet
   const { data: loadedClub, isLoading } = useClub(clubId, !!clubId && !initialClub && !authLoading);
   const club = initialClub ?? loadedClub;
   const viewerMembershipRole = club?.viewerMembershipRole ?? null;
-  const isMember = Boolean(viewerMembershipRole);
   const isOwner = viewerMembershipRole === "owner" || club?.ownerId === user?.id;
+  const isMember = Boolean(viewerMembershipRole) || isOwner;
   const canLoadMembers = !!clubId && isAuthenticated && (isMember || isOwner);
   const { data: members = [], isLoading: membersLoading } = useClubMembers(clubId, canLoadMembers);
   const moderateMember = useModerateClubMember();
@@ -446,7 +444,6 @@ export default function ReaderClubDetails({ clubId, initialClub }: ReaderClubDet
               </Button>
               {isOwner ? (
                 <div className="flex flex-wrap items-center gap-2">
-                  <InviteMemberModal clubId={clubId} clubTitle={club.title} />
                   <ClubSettingsModal club={club} />
                 </div>
               ) : null}
@@ -672,8 +669,6 @@ export default function ReaderClubDetails({ clubId, initialClub }: ReaderClubDet
                 )}
               </CardContent>
             </Card>
-
-            {isOwner ? <InvitationsList clubId={clubId} isOwner={isOwner} /> : null}
           </aside>
 
           <section className="order-2 space-y-6 lg:col-span-2">

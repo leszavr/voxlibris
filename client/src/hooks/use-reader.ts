@@ -191,6 +191,7 @@ export function useUpdateProgress(bookId: string) {
       queryClient.invalidateQueries({ queryKey: ["reading-status"] });
       queryClient.invalidateQueries({ queryKey: ["reading-stats"] });
       queryClient.invalidateQueries({ queryKey: ["reading-goal"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/v1/user/books"] });
     },
   });
 }

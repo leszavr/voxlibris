@@ -12,6 +12,7 @@ import { ClubReaderTopBar } from "./club/ClubReaderTopBar";
 import { normalizeReaderChapter, type ClubReaderInnerProps, type PendingScrollRestore } from "./club/club-reader-utils";
 import { LatestPositionPrompt } from "./LatestPositionPrompt";
 import { ChapterLoadingIndicator, ContentLoadingSkeleton } from "./LoadingIndicator";
+import { ReaderProgressIndicators } from "./ReaderProgressIndicators";
 import { useKeyboardShortcuts, readerShortcuts } from "./useKeyboardShortcuts";
 import { KeyboardHelp } from "./KeyboardHelp";
 import { Button } from "../ui/button";
@@ -164,7 +165,7 @@ function ClubReaderInner({ clubId, bookId }: Readonly<ClubReaderInnerProps>) {
   const {
     progressLoading,
     userProgress,
-    clubProgress: _clubProgress,
+    clubProgress,
     outlineContent,
     chapterContent,
     contentLoading,
@@ -269,9 +270,9 @@ function ClubReaderInner({ clubId, bookId }: Readonly<ClubReaderInnerProps>) {
   const {
     rememberLocalProgress,
     saveWithSync,
-    isSyncing: _isSyncing,
-    syncError: _syncError,
-    lastSyncTime: _lastSyncTime,
+    isSyncing,
+    syncError,
+    lastSyncTime,
   } = useReaderSyncState({ saveProgress });
 
   // Analytics tracking
@@ -859,6 +860,15 @@ function ClubReaderInner({ clubId, bookId }: Readonly<ClubReaderInnerProps>) {
             </div>
           ) : null}
         </div>
+
+        <ReaderProgressIndicators
+          isSyncing={isSyncing}
+          lastSyncTime={lastSyncTime}
+          error={syncError}
+          userProgress={userProgress}
+          groupProgress={clubProgress}
+          groupLabel="Клуб"
+        />
       </EmbeddedClubStudioShell>
 
       {/* Справка по горячим клавишам */}

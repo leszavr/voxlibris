@@ -181,6 +181,12 @@ export function ReadingPlan({ clubId, isOwner = false }: ReadingPlanProps) {
 
   // Расчет общего прогресса по плану
   const calculateOverallProgress = () => {
+    const activeMembersProgress = membersProgress?.filter((member) => typeof member.progress === "number") ?? [];
+    if (activeMembersProgress.length > 0) {
+      const total = activeMembersProgress.reduce((sum, member) => sum + (member.progress ?? 0), 0);
+      return Math.round(total / activeMembersProgress.length);
+    }
+
     if (!planData?.plan.length) return 0;
     const completedStages = planData.plan.filter(plan => 
       getPlanStageStatus(plan.id) === 'completed'

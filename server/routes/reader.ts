@@ -609,7 +609,8 @@ router.get("/:id/progress", async (req: Request, res: Response) => {
       .where(
         and(
           eq(readingProgress.userId, userId),
-          eq(readingProgress.bookId, bookId)
+          eq(readingProgress.bookId, bookId),
+          isNull(readingProgress.clubId)
         )
       )
       .orderBy(desc(readingProgress.updatedAt), desc(readingProgress.lastReadAt))

@@ -31,6 +31,19 @@ function entitlementDenied(error: EntitlementError) {
   return { message: error.message, code: error.code, featureKey: error.featureKey, upgradeUrl: '/pricing' };
 }
 
+async function canManageClubInvitations(clubId: string, userId: string) {
+  const club = await storage.getClub(clubId);
+  if (!club) return { club: undefined, allowed: false, owner: false };
+
+  const membership = await storage.getUserClubMembership(club.id, userId);
+  const owner = club.ownerId === userId || membership?.role === 'owner';
+  return {
+    club,
+    owner,
+    allowed: owner || membership?.role === 'moderator',
+  };
+}
+
 // Helper: robust lookup of invitation by token with small fallbacks
 async function findInvitationByToken(token: string) {
   if (!token) return undefined;
@@ -93,14 +106,13 @@ router.post('/:id/invite', jwtAuth, async (req, res) => {
       return res.status(400).json({ message: 'Valid email is required' });
     }
 
-    const club = await storage.getClub(req.params.id);
-    if (!club) {
+    const access = await canManageClubInvitations(req.params.id, req.user.userId);
+    if (!access.club) {
       return res.status(404).json({ message: 'Club not found' });
     }
 
-    // Проверяем права: только владелец и модератор могут приглашать
-    const membership = await storage.getUserClubMembership(club.id, req.user.userId);
-    if (!membership || (membership.role !== 'owner' && membership.role !== 'moderator')) {
+    const club = access.club;
+    if (!access.allowed) {
       return res.status(403).json({ message: 'Only club owner or moderator can invite members' });
     }
 
@@ -183,22 +195,20 @@ router.get('/:id/invitations', jwtAuth, async (req, res) => {
       return res.status(401).json({ message: 'Authentication required' });
     }
 
-    const club = await storage.getClub(req.params.id);
-    if (!club) {
+    const access = await canManageClubInvitations(req.params.id, req.user.userId);
+    if (!access.club) {
       return res.status(404).json({ message: 'Club not found' });
     }
 
     // Проверяем права: владелец/модератор клуба или админ/модератор системы
     const userRole = req.user.role as UserRole;
     const isSystemAdmin = userRole === 'admin' || userRole === 'moderator';
-    const membership = await storage.getUserClubMembership(club.id, req.user.userId);
-    const isClubModerator = membership?.role === 'owner' || membership?.role === 'moderator';
     
-    if (!isSystemAdmin && !isClubModerator) {
+    if (!isSystemAdmin && !access.allowed) {
       return res.status(403).json({ message: 'Access denied' });
     }
 
-    const invitations = await storage.getClubInvitations(club.id);
+    const invitations = await storage.getClubInvitations(access.club.id);
 
     // Получаем информацию о пригласивших пользователях
     const invitationsWithInviters = await Promise.all(
@@ -423,14 +433,12 @@ router.delete('/:clubId/invitations/:invitationId', jwtAuth, async (req, res) =>
 
     const { clubId, invitationId } = req.params;
 
-    const club = await storage.getClub(clubId);
-    if (!club) {
+    const access = await canManageClubInvitations(clubId, req.user.userId);
+    if (!access.club) {
       return res.status(404).json({ message: 'Club not found' });
     }
 
-    // Проверяем права
-    const membership = await storage.getUserClubMembership(club.id, req.user.userId);
-    if (!membership || (membership.role !== 'owner' && membership.role !== 'moderator')) {
+    if (!access.allowed) {
       return res.status(403).json({ message: 'Only club owner or moderator can revoke invitations' });
     }
 
@@ -467,14 +475,13 @@ router.post('/:clubId/invitations/by-email', jwtAuth, async (req, res) => {
       return res.status(400).json({ message: 'Email is required' });
     }
 
-    const club = await storage.getClub(clubId);
-    logger.info({ found: Boolean(club) }, '[Clubs] Club found');
-    if (!club) {
+    const access = await canManageClubInvitations(clubId, req.user.userId);
+    logger.info({ found: Boolean(access.club) }, '[Clubs] Club found');
+    if (!access.club) {
       return res.status(404).json({ message: 'Club not found' });
     }
 
-    const membership = await storage.getUserClubMembership(club.id, req.user.userId);
-    if (!membership || (membership.role !== 'owner' && membership.role !== 'moderator')) {
+    if (!access.allowed) {
       return res.status(403).json({ message: 'Only club owner or moderator can remove invitations' });
     }
 
@@ -505,13 +512,12 @@ router.delete('/:clubId/invitations', jwtAuth, async (req, res) => {
     const { clubId } = req.params;
     logger.info(`[Clubs] Clear all invitations request: clubId=${clubId}`);
 
-    const club = await storage.getClub(clubId);
-    if (!club) {
+    const access = await canManageClubInvitations(clubId, req.user.userId);
+    if (!access.club) {
       return res.status(404).json({ message: 'Club not found' });
     }
 
-    const membership = await storage.getUserClubMembership(club.id, req.user.userId);
-    if (membership?.role !== 'owner') {
+    if (!access.owner) {
       return res.status(403).json({ message: 'Only club owner can clear all invitations' });
     }
 
@@ -552,13 +558,12 @@ router.post('/:clubId/invitations/by-email', jwtAuth, async (req, res) => {
       return res.status(400).json({ message: 'Email is required' });
     }
 
-    const club = await storage.getClub(clubId);
-    if (!club) {
+    const access = await canManageClubInvitations(clubId, req.user.userId);
+    if (!access.club) {
       return res.status(404).json({ message: 'Club not found' });
     }
 
-    const membership = await storage.getUserClubMembership(club.id, req.user.userId);
-    if (!membership || (membership.role !== 'owner' && membership.role !== 'moderator')) {
+    if (!access.allowed) {
       return res.status(403).json({ message: 'Only club owner or moderator can remove invitations' });
     }
 
@@ -588,14 +593,12 @@ router.post('/:clubId/invitations/:invitationId/resend', jwtAuth, async (req, re
 
     const { clubId, invitationId } = req.params;
 
-    const club = await storage.getClub(clubId);
-    if (!club) {
+    const access = await canManageClubInvitations(clubId, req.user.userId);
+    if (!access.club) {
       return res.status(404).json({ message: 'Club not found' });
     }
 
-    // Проверяем права
-    const membership = await storage.getUserClubMembership(club.id, req.user.userId);
-    if (!membership || (membership.role !== 'owner' && membership.role !== 'moderator')) {
+    if (!access.allowed) {
       return res.status(403).json({ message: 'Only club owner or moderator can resend invitations' });
     }
 
@@ -631,7 +634,7 @@ router.post('/:clubId/invitations/:invitationId/resend', jwtAuth, async (req, re
 
     // Создаем новое приглашение
     const newInvitation: InsertClubInvitation = {
-      clubId: club.id,
+      clubId: access.club.id,
       email: oldInvitation.email,
       invitedBy: req.user.userId,
       inviteToken,
@@ -644,8 +647,8 @@ router.post('/:clubId/invitations/:invitationId/resend', jwtAuth, async (req, re
     const baseUrl = await getPublicBaseUrl();
     const emailSent = await emailService.sendClubInvitation({
       email: oldInvitation.email,
-      clubName: club.title,
-      clubDescription: club.description || 'Присоединяйтесь к нашему клубу!',
+      clubName: access.club.title,
+      clubDescription: access.club.description || 'Присоединяйтесь к нашему клубу!',
       inviterName: req.user.username,
       inviteToken,
       expiresAt,
@@ -656,7 +659,7 @@ router.post('/:clubId/invitations/:invitationId/resend', jwtAuth, async (req, re
       console.warn(`[Clubs] Email invitation not sent to ${oldInvitation.email} - SMTP may not be configured`);
     }
 
-    logger.info(`[Clubs] Invitation resent to ${oldInvitation.email} for club "${club.title}" by ${req.user.username}`);
+    logger.info(`[Clubs] Invitation resent to ${oldInvitation.email} for club "${access.club.title}" by ${req.user.username}`);
 
     res.status(201).json({
       message: emailSent 

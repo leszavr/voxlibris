@@ -43,6 +43,26 @@ function buildReaderClubJoinRequestMessage(params: {
   ].join('\n');
 }
 
+function buildClubInvitationRequestMessage(params: {
+  clubId: string;
+  clubTitle: string;
+  applicantUsername: string;
+  applicantEmail: string | null | undefined;
+}): string {
+  const clubUrl = `/clubs/${params.clubId}`;
+  const emailLine = params.applicantEmail ? `Email: ${params.applicantEmail}` : 'Email: не указан';
+
+  return [
+    `Запрос приглашения в клуб «${params.clubTitle}»`,
+    '',
+    `Пользователь: ${params.applicantUsername}`,
+    emailLine,
+    '',
+    `Клуб: ${clubUrl}`,
+    'Если вы готовы принять пользователя, отправьте ему приглашение из блока участников клуба.',
+  ].join('\n');
+}
+
 function normalizeRetentionDays(value: unknown): number | null {
   const num = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(num)) return null;
@@ -167,6 +187,57 @@ router.post('/reader-clubs/:clubId/join-request', async (req: Request, res: Resp
   } catch (err) {
     logger.error({ err, clubId, userId }, '[dm] reader club join request error');
     res.status(500).json({ error: 'Failed to send join request' });
+  }
+});
+
+/**
+ * POST /api/dm/clubs/:clubId/invitation-request
+ * Отправить владельцу обычного клуба запрос приглашения через ЛС.
+ */
+router.post('/clubs/:clubId/invitation-request', async (req: Request, res: Response) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { clubId } = req.params;
+  if (!clubId) return res.status(400).json({ error: 'clubId required' });
+
+  try {
+    const club = await repositories.clubs.getClub(clubId);
+    if (!club || club.type === 'reader-led') {
+      return res.status(404).json({ error: 'Club not found' });
+    }
+
+    if (club.ownerId === userId) {
+      return res.status(400).json({ error: 'Owner cannot request invitation to own club' });
+    }
+
+    const existingMembership = await repositories.clubs.getUserClubMembership(clubId, userId);
+    if (existingMembership?.isActive) {
+      return res.status(409).json({ error: 'User is already a club member' });
+    }
+
+    const conv = await repositories.dm.getOrCreateConversation(userId, club.ownerId);
+    const message = buildClubInvitationRequestMessage({
+      clubId: club.id,
+      clubTitle: club.title,
+      applicantUsername: req.user?.username ?? userId,
+      applicantEmail: null,
+    });
+    const msg = await repositories.dm.sendMessage(conv.id, userId, message);
+
+    try {
+      const io = getIO();
+      io.to(`dm:${club.ownerId}`).emit('dm:new_message', { conversationId: conv.id, message: msg });
+      const totalUnread = await repositories.dm.getTotalUnread(club.ownerId);
+      io.to(`dm:${club.ownerId}`).emit('dm:unread_count', { count: totalUnread });
+    } catch (socketErr) {
+      logger.warn({ socketErr }, '[dm] club invitation request socket emit failed (non-fatal)');
+    }
+
+    res.status(201).json({ success: true, conversationId: conv.id, messageId: msg.id });
+  } catch (err) {
+    logger.error({ err, clubId, userId }, '[dm] club invitation request error');
+    res.status(500).json({ error: 'Failed to send invitation request' });
   }
 });
 

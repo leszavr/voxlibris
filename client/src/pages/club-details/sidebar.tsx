@@ -345,7 +345,7 @@ export function MembersListCard({ clubId, clubTitle, members, memberCount, membe
           <Badge variant="outline" className="font-sans font-normal text-xs">
             {membersLoading ? "Загрузка..." : `${memberCount} участников`}
           </Badge>
-          {canViewMembers && (isOwner || isModerator) && (
+          {(isOwner || isModerator) && (
             <InviteMemberModal clubId={clubId} clubTitle={clubTitle} />
           )}
         </div>

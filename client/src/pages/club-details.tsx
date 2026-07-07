@@ -33,7 +33,8 @@ export default function ClubDetails() {
   const canLoadClubData = !!clubId && !authLoading;
   const { data: clubData, isLoading, error } = useClub(clubId, canLoadClubData);
   const viewerMembershipRole = clubData?.viewerMembershipRole ?? null;
-  const canViewMembers = Boolean(viewerMembershipRole) || ['admin', 'moderator'].includes(user?.role ?? '');
+  const isOwnerByOwnerId = Boolean(user?.id && (clubData?.ownerId === user.id || clubData?.owner?.id === user.id));
+  const canViewMembers = Boolean(viewerMembershipRole) || isOwnerByOwnerId || ['admin', 'moderator'].includes(user?.role ?? '');
   const canLoadMembersData = !!clubId && isAuthenticated && !authLoading && canViewMembers;
   const { data: membersData, isLoading: membersLoading } = useClubMembers(clubId, canLoadMembersData);
   const removeMemberMutation = useRemoveMember();
@@ -44,7 +45,15 @@ export default function ClubDetails() {
   
   const members = Array.isArray(membersData) ? membersData : [];
   const permissions = useClubPermissions(viewerMembershipRole, user);
-  const { isOwner, isModerator, isMember, canRemove } = permissions;
+  const isOwner = permissions.isOwner || isOwnerByOwnerId;
+  const { isModerator } = permissions;
+  const isMember = permissions.isMember || isOwner;
+  const canRemove = (memberRole: string, memberId: string) => {
+    if (!user?.id || memberId === user.id) return false;
+    if (isOwner) return memberRole !== "owner";
+    if (isModerator) return memberRole === "member";
+    return false;
+  };
 
   const { handleRemoveMember, handleDeleteBook, handleLeaveClub, handleCleanupChat } = useClubActions({
     clubId,
@@ -126,8 +135,8 @@ export default function ClubDetails() {
           setLocation={setLocation}
           user={user}
           onOwnershipTransferred={() => {
-            queryClient.invalidateQueries({ queryKey: ["/api/clubs", clubId] });
-            queryClient.invalidateQueries({ queryKey: ["/api/clubs", clubId, "members"] });
+            queryClient.invalidateQueries({ queryKey: ["club", clubId] });
+            queryClient.invalidateQueries({ queryKey: ["club-members", clubId] });
             globalThis.location.reload();
           }}
         />

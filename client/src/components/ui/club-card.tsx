@@ -1,6 +1,11 @@
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 import { getClubCoverUrl } from "@/lib/club-cover";
-import { Users, Mic, Lock } from "lucide-react";
+import { Users, Mic, Lock, UserPlus, Loader2 } from "lucide-react";
+import { useState, type MouseEvent } from "react";
 import { Link } from "wouter";
 
 function formatMemberCount(members: number, maxMembers: number): string {
@@ -40,6 +45,36 @@ export function ClubCard({
   type = "standard",
   tags = [],
 }: Readonly<ClubCardProps>) {
+  const { isAuthenticated } = useAuth();
+  const { toast } = useToast();
+  const [requestSending, setRequestSending] = useState(false);
+  const canRequestInvitation = isAuthenticated && type !== "reader-led";
+
+  const handleInvitationRequest = async (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (requestSending) return;
+
+    setRequestSending(true);
+    try {
+      await apiRequest(`/api/dm/clubs/${id}/invitation-request`, { method: "POST" });
+      toast({
+        title: "Запрос отправлен",
+        description: "Владелец клуба получит его в личных сообщениях.",
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Не удалось отправить запрос";
+      toast({
+        title: "Не удалось отправить запрос",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setRequestSending(false);
+    }
+  };
+
   return (
     <div className="relative h-full">
       <Link href={`/clubs/${id}`}>
@@ -124,6 +159,20 @@ export function ClubCard({
                     {formatMemberCount(members, maxMembers)}
                   </span>
                 </div>
+                {canRequestInvitation ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 rounded-md bg-background/95 shadow-sm"
+                    aria-label="Запросить приглашение"
+                    title="Запросить приглашение"
+                    disabled={requestSending}
+                    onClick={handleInvitationRequest}
+                  >
+                    {requestSending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserPlus className="h-3.5 w-3.5" />}
+                  </Button>
+                ) : null}
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
                 <Mic className="h-4 w-4" />
