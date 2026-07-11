@@ -35,7 +35,7 @@ HASH=$(docker exec xlibris-postgres psql -U xlibris -d xlibris -tA -c \
   "SELECT password FROM users WHERE email = 'user@domain.com' LIMIT 1")
 HASH="$HASH" node - <<'NODE'
 const bcrypt = require('bcrypt');
-console.log(bcrypt.compareSync('YOUR_PASSWORD', process.env.HASH));
+console.log(bcrypt.compareSync('PaS$SworD', process.env.HASH));
 NODE
 ```
 
@@ -50,7 +50,7 @@ NODE
 ```bash
 curl -i -s -X POST http://localhost:5000/api/auth/login \
   -H 'Content-Type: application/json' \
-  --data '{"email":"user@domain.com","password":"YOUR_PASSWORD","rememberMe":false}'
+  --data '{"email":"user@domain.com","password":"PaS$SworD","rememberMe":false}'
 ```
 
 ## 4. Backend не видит PostgreSQL
