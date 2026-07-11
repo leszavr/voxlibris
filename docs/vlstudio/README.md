@@ -21,11 +21,11 @@
 - [Baseline текущего стабильного контура](./VLSTUDIO_ICECAST_BASELINE_2026-04-28.md)
 - [Почему сейчас выбран Icecast и как готовить возврат к WebRTC](./VLSTUDIO_ICECAST_DECISION_AND_WEBRTC_RETURN_2026-04-28.md)
 
-## WebRTC-ветки как reference
+## WebRTC reference-ветки
 
-Старые ветки с WebRTC/mediasoup реализацией Studio:
+Архивные reference-ветки с WebRTC/mediasoup реализацией Studio:
 
-- **`dev_08.02.26`** — основная ветка с mediasoup backend. Ключевые файлы:
+- **`reference/webrtc-mediasoup-base`** — основная ветка с mediasoup backend. Ключевые файлы:
   - `server/webrtc/index.ts`
   - `server/webrtc/mediasoup-config.ts`
   - `server/webrtc/mediasoup-manager.ts`
@@ -35,7 +35,7 @@
   - `server/routes/webrtc.ts`
   - `server/services/reading-session-webrtc.ts`
 
-- **`dev_12.02.26`** — может содержать дополнительные правки той же WebRTC-ветки.
+- **`reference/webrtc-mediasoup-followup`** — может содержать дополнительные правки той же WebRTC-ветки.
 
 Эти ветки можно использовать как **reference и источник идей**, но код напрямую не адаптирован под текущий baseline. При возврате к WebRTC потребуется пересмотр с учётом текущего deploy-контура.
 
@@ -44,4 +44,4 @@
 - если нужен широкий продуктовый и архитектурный контекст, начинать с аудита и roadmap 2026-04-24;
 - если нужен текущий execution baseline, ориентироваться на документы по Icecast от 2026-04-28;
 - новые решения по Studio дальше фиксировать уже в этом каталоге, не создавая новые top-level `docs/vlstudio-*.md`;
-- WebRTC-идеи и паттерны смотреть в ветках `dev_08.02.26` / `dev_12.02.26`.
+- WebRTC-идеи и паттерны смотреть в ветках `reference/webrtc-mediasoup-base` / `reference/webrtc-mediasoup-followup`.
