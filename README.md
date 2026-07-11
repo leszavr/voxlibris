@@ -171,7 +171,7 @@ pnpm run quality:gate        # Полная проверка качества
 | [База данных](./docs/06-database/README.md) | Схема и миграции |
 | [Тестирование](./docs/10-testing/README.md) | Стратегия и инфраструктура тестов |
 | [Деплой](./docs/11-deployment/deployment-guide.md) | Руководство по развёртыванию |
-| [VoxLibris Studio](./docs/vlstudio/README.md) | Аудио/видео-сессии |
+| [VoxLibris Studio](./docs/vlstudio/README.md) | Аудио-сессии |
 
 ## Лицензия
 
