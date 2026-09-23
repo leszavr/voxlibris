@@ -83,7 +83,32 @@ ICECAST_INTERNAL_HOST=xlibris-icecast
 
 Не заменять эти значения на `localhost` в основном сценарии.
 
-## 6. Миграции
+## 6. Кастомный NGINX для CapRover
+
+Versioned-шаблоны находятся в [`infra/nginx/caprover-templates.conf`](../../infra/nginx/caprover-templates.conf).
+
+Соответствие production-приложений:
+
+| Секция | CapRover app | Container HTTP Port | Домен |
+|---|---|---:|---|
+| `**voxlibris**` | `voxlibris` | `5000` | `voxlibris.ru`, `www.voxlibris.ru` |
+| `**radio**` | `radio` | `8000` | `radio.voxlibris.ru` |
+
+При создании приложения на новом сервере вставить соответствующую секцию без заголовка `**...**` в `HTTP Settings → Custom Nginx Configuration`.
+
+Шаблон `voxlibris` обязан сохранять отдельный location `/api/studio/stream/` с `proxy_request_buffering off`, `proxy_buffering off` и длительными таймаутами. Шаблон `radio` обязан отключать proxy buffering для Icecast live-потока.
+
+После сохранения настроек выполнить:
+
+```bash
+nginx -t
+curl -fsS https://voxlibris.ru/api/health
+curl -fsS https://radio.voxlibris.ru/status-json.xsl
+```
+
+Не хранить в Git реальные сертификаты, ключи, пароли, токены или сгенерированные конфиги NGINX.
+
+## 7. Миграции
 
 Для локального чистого окружения `deploy.sh` применяет:
 
@@ -99,7 +124,7 @@ pnpm exec tsx script/run-all-migrations.ts
 migrations/manual_create_admin/seed_data.sql
 ```
 
-## 7. Создание суперадмина
+## 8. Создание суперадмина
 
 ```bash
 bash 11-deployment/scripts/create-superadmin.sh
@@ -107,7 +132,7 @@ bash 11-deployment/scripts/create-superadmin.sh
 
 Скрипт создания администратора не объединен с deploy намеренно: это отдельная операция управления доступом.
 
-## 8. Проверка
+## 9. Проверка
 
 Основная проверка:
 

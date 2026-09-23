@@ -44,6 +44,7 @@ bash ../xlibris-manager.sh build
 - [`superadmin.md`](superadmin.md) — создание первого администратора.
 - [`operations.md`](operations.md) — эксплуатация через `xlibris-manager.sh`.
 - [`troubleshooting.md`](troubleshooting.md) — диагностика.
+- [`infra/nginx/caprover-templates.conf`](../../infra/nginx/caprover-templates.conf) — versioned-шаблоны кастомного NGINX для CapRover.
 - [`scripts/deploy.sh`](scripts/deploy.sh) — автоматизированный первичный деплой.
 - [`scripts/create-superadmin.sh`](scripts/create-superadmin.sh) — создание суперадмина.
 - [`scripts/run-migrations.sh`](scripts/run-migrations.sh) — legacy/fallback миграционный скрипт.
@@ -69,6 +70,21 @@ bash 11-deployment/scripts/create-superadmin.sh
 ```text
 http://localhost:3000
 ```
+
+## Кастомный NGINX в CapRover
+
+Для production-приложений CapRover используются шаблоны из [`infra/nginx/caprover-templates.conf`](../../infra/nginx/caprover-templates.conf):
+
+- `**voxlibris**` — приложение `voxlibris`, порт контейнера `5000`, домены `voxlibris.ru` и `www.voxlibris.ru`;
+- `**radio**` — приложение `radio`, порт контейнера `8000`, домен `radio.voxlibris.ru`.
+
+При переносе на другой сервер скопировать содержимое соответствующей секции без строки-заголовка `**...**` в CapRover: `Apps → приложение → HTTP Settings → Custom Nginx Configuration`.
+
+Шаблон `voxlibris` отключает буферизацию длинного `POST` на `/api/studio/stream/` и задаёт таймауты потоковой передачи. Шаблон `radio` отключает буферизацию Icecast и задаёт увеличенные таймауты для live-аудио.
+
+После сохранения проверить сгенерированный конфиг внутри `captain-nginx` командой `nginx -t` и запросами к `/api/health` и `/status-json.xsl`.
+
+В Git не должны попадать пароли, токены, `.env`, TLS-ключи, сертификаты и сгенерированные production-конфиги.
 
 ## Важные замечания
 
